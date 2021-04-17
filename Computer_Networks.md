@@ -189,5 +189,28 @@ Internet is an *extremely* complicated system.
 
 ### Layered Architecture
 
+Each layer provides its service by:
+
+-   Performing certain actions within that layer.
+-   Using the services of the layer directly below it.
+
+These layers are actually layers of **abstructions**!
+
+#### Protocol Layering
+
+-   Network designers organize protocols in **layers**.
+-   Each layer has its **service model**.
+-   Application-layer protocols are almost always implemented in software.
+-   The physical layer and data link layers are typically implemented in hardware.
+-   The network layer is often a mixed implementation of hardware and software.
+
+The Internet protocol stack consists of five layers: the physical, link, network, transport, and application layers.
+
+#### Application Layer
+
+Includes many protocols, such as the HTTP protocol (provides for Web document request and transfer), SMTP (which provides for the transfer of e-mail messages), and FTP (which provides for the transfer of files between two end systems), DNS.
+
+An application-layer protocol is distributed over multiple end system, which the application in one end system using the protocol to exchange packets of information with the application in another end system. We'll refer to this packet of information at the application layer as a message.
+
 
 
