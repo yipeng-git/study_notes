@@ -1,4 +1,4 @@
-#  1. Computer Networks and the Internet
+# 1. Computer Networks and the Internet
 ## 1.1 What is the Internet?
 
 -   Nuts-and-Bolts: The basic hardware and software components make up the internet.
@@ -426,5 +426,75 @@ HTTP defines how Web clients request Web pages from Web servers and how servers 
 
 HTTP use TCP as its underlying transport protocol. The HTTP client first initiates a TCP connection with the server. Once the connection is estiblished, the browser and the server processes access TCP through their socket interfaces. TCP provides a reliable data transfer service to HTTP. Here is one of the great adventages of a layered architecture--HTTP need not worry about lost data or the details of how TCP recovers from loss or reordering of data within the network. That is the job of TCP and the protocols in the lower layers of the protocol stack.
 
+The server sends requested files to clients without storing any state information about the client. Because an HTTP server maintains no information about the clients, HTTP is said to be a **stateless protocol**. The Web uses the client-server application architecture. A Web server is always on, with a fixed IP address, and it services requests from potentially millions of different browsers.
 
+### 2.2.2 Non-Presistent and Presistent Connections
+
+Depending on the application and how the application is being used, the series of requests may be made back-to-back, periodically at regular intervals, or intermittently. When this client-server interaction is taking place over TCP, the application developer needs to make an important decision--should each request/response pair be sent over a *separate* TCP connection, or should all of the requests and their corresponding responses be sent over the *same* TCP connection? In the former approach, the application is said to use **non-presistent connections**; and in the latter approach, **presistent connections**. HTTP uses presistent conections in its default mode, but clients and server can be configured to use non-presistent connection.
+
+#### HTTP with Non-Persistent Connection
+
+Steps of transferring a Web page from server to client for the case of non-presistent connections. Suppose the page consists of a base HTML file and 10 JPEG images, and all 11 of these objects reside on the same server. Further suppose the URL for the base HTML file is http://www.example.edu/folder/home.index
+
+1.  The HTTP client process initiates a TCP connection to the server www.example.com on port number 80, which is the default port number for HTTP.l Associated with the TCP connection, there will be a socket at the client and a socket at the server.
+2.  The HTTP clients sends a HTTP request message to the server via its socket. The request message includes the path name `/folder/home.index`.
+3.  The HTTP server process receives the request message via its socket, retrieves the object `/folder/home.index` from its storage, encapsulates the object in an HTTP response message, and sends the response message to the client via its socket.
+4.  The HTTP server process tells TCP to close the TCP connection. (But the TCP doesn't actually terminate the connection until it knowns for sure that the client has received the response message intact.)
+5.  The HTTP client receives the response message. The TCP connection terminates. The message indicates that the encapsulated object is an HTML file. The client extracts the file from the response message, examins the HTML file, and finds references to the 10 JPEG objects.
+6.  The first four steps are then repeated for each of the referenced JPEG objects.
+
+As the browser receives the Web page, it displays the page to the user. HTTP has nothing to do with how a Web page is interpreted by a client. The HTTP specifications define only the communication protocol between the client HTTP program and the server HTTP program.
+
+Each TCP connection transports exactly one request message and one response message. Thus, in this example 11 TCP connections are generated.
+
+User can configure modern browsers to control the degree of TCP connection parallelism. In their default modes, most browsers open 5 to 10 parallel TCP connections.
+
+**Round-trip time** (RTT) is defined as the time it takes for a small packet to travel from client to server and then back to the client. The RTT includes packet-propagation delays, packet-queuing delays in intermediate routers and switches, and packet-processing delays.
+
+When the user clicks on a hyperlink which causes the browser to initiate a TCP connection between the browser and Web server, this involves a "three-way handshake":
+
+1.  The clients sends a small TCP segment to the server.
+2.  The server acknowledges and responds with a small TCP segment.
+3.  The client acknowledges back to the server.
+
+The first two parts of the three-way handshake take one RTT. After completing the first two parts of the handshake, the client sends the HTTP request message combined with the third part of the three-way handshake (the acknowledgement) into the TCP connection. Once the request message arrives at the server, the server sends the HTML file into the TCP connection. This HTTP request/response eats up another RTT. Thus, roughly, the total response time is two RTTs plus the transmisison time at the server of the HTML file.
+
+#### HTTP with Persistent Connections
+
+Shortcomings of non-persistent connections:
+
+-   A brand-new connection must be established and maintained for each *requested object*. For each of these connections, TCP buffers must be allocated and TCP variables must be kept in both the client and server. This can place a significant burden on the Web server, which may be serving requests from hundreds of different clients simultaneously.
+-   Each object suffers a delivery delay of two RTTs--one RTT to establish the TCP connection and one RTT to request and receive an object.
+
+With HTTP 1.1 persistent connections, the server leaves the TCP connection open after sending a response. Subsequent requests and responses between the same client and server can be sent over the same connection. Moreover, multiple Web pages residing on the same server can be sent from the server to the same client over a single persistent TCP connection. These requests for objects can be made back-to-back, without waiting for replies to pending requests (pipelining). Typically, the HTTP server closes a connection when it isn't used for a certain time (a configurable timeout interval). When the server receives the back-to-back requests, it sends the objects back-to-back. The default mode of HTTP uses persistent connections with pipelining. Most recently, HTTP/2 builds on HTTP 1.1 by allowing multiple requests and replies to be interleaved in the *same* connection, and a mechanism for prioritizing HTTP message requests and replies within this connection.
+
+### 2.2.3 HTTP Message Format
+
+The HTTP specifications include the definitions of the HTTP message formats. There are two types of HTTP messages, request messages and response messages.
+
+#### HTTP Request Message 
+
+A typical HTTP request message:
+
+```
+GET /somedir/page.html HTTP/1.1
+Host: www.someschool.edu
+Connection: close
+User-agent: Mozilla/5.0
+Accept-language: fr
+```
+
+-   The message is written in ordinary ASCII text, so ordinary computer-literate human being can read it.
+-   The message consists of five lines, each followed by a carriage return and a line feed. The number of lines can vary from 1 to many.
+-   The first line of an HTTP request message is called the **request line**.
+    -   The request line has three fields: the method field, the URL field, and the HTTP version field.
+    -   The method field can take on several different values, including `GET`, `POST`, `HEAD`, `PUT`, and `DELETE`.
+    -   The great majority of HTTP request messages use the `GET` method.
+-   The subsquent lines are called the **header lines**.
+    -   The header line `Host: www.someschool.edu` specifies the host on which the object resides.
+    -   By including the `Connection: close` header line, the browser is telling the server that it doesn't want to bother with persistent connections; it wants the server to close the connection after sending the requested object.
+    -   The `User-agent:` header line specifies the user agent is Mozilla/5.0, a Firefox browser. This header line is useful because the server can actually send different versions of the same object to different types of user agents.
+    -   Finally, the `Accept-language:` header indicates that the user prefers to receive a French version of the object. It is just one of many content negotiation headers available in HTTP.
+
+![](/Users/yipengzhang/Notes/study_notes/HTTP_request.jpeg)
 
