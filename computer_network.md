@@ -496,5 +496,5 @@ Accept-language: fr
     -   The `User-agent:` header line specifies the user agent is Mozilla/5.0, a Firefox browser. This header line is useful because the server can actually send different versions of the same object to different types of user agents.
     -   Finally, the `Accept-language:` header indicates that the user prefers to receive a French version of the object. It is just one of many content negotiation headers available in HTTP.
 
-![](/Users/yipengzhang/Notes/study_notes/HTTP_request.jpeg)
+![HTTP request message.](https://raw.githubusercontent.com/yipeng-git/study_notes/main/MarkdownImages/HTTP_request.jpeg)
 
