@@ -785,3 +785,111 @@ In order to deal with the issue of scale, the DNS uses a large number of servers
 
 Suppose a client wants to determine the IP address for the hostname `www.amazon.com`. To a first approximation, the client contacts one of the root servers, which returns IP address for TLD servers for the top-level domain `com`. The client then contacts one of these TLD servers, which returns the IP address of an authoritative server for `amazon.com`. Finally, the client contacts one of the authoritative server for `amazon.com`, which returns the IP address for the hostname `www.amazon.com`. We will soon examine this DNS lookup process in more detail. But lets first take a closer look at these t hree classes of DNS servers:
 
+-   **Root DNS server**. There are 1086 as of 2 July 2020. These root name servers are managed by 13 different organizations. Root name servers provide the IP addresses of the TLD servers.
+-   **Top-level domain (TLD) servers**. For each of the top-level domains--top-level domains such as com, org, net, edu, and gov, and all of the contry top-level domains--there is TLD server (or server cluster). These TLD servers are maintained by different companies. TLD servers provide the IP addresses for authoritative DNS servers.
+-   **Authoritative DNS servers**. Every organization with publicly accessible hosts on the Internet must provide publicly accessible DNS records that map the names of those hosts to IP addresses. An organization can chose to implement its own authoritative DNS server to hold these records; or can pay to have these records stored in an authoritative DNS server of some service provider. Most universities and large companies implement and maintain their own primary and secondary authoritative DNS server.
+
+There is another important type of DNS server called the **local DNS server**. A local DNS server does not strictly belong to the hierarchy but is nevertheless central to the DNS architecture. When a host connects to an ISP, the ISP provides the host with the IP addresses of one or more of its local DNS servers (typically through DHCP). When a host makes a DNS query, the query is sent to the local DNS server, which acts a proxy, forwarding the query into the DNS server hierarchy.
+
+#### DNS Caching
+
+DNS servers using **DNS caching** to improve the delay performance and to reduce the number of DNS messages ricocheting arount the Internet. DNS servers thus reduce the query chain by mapping the cached hostname/IP address pair, and discard cached information after a period of time.
+
+### 2.4.3 DNS Records and Messages
+
+**Resource records** (**RRs**) are the hostname-to-IP address mapping that stored in the DNS distributed database. 
+
+A resource record is a four-tuple that contains the following fields:
+
+```
+(Name, Value, Type, TTL)
+```
+
+`TTL` is the time to live of the resource record; it determines when a resource should be removed from a cache.
+
+Type:
+
+-   If `Type=A`, then `Name` is a hostname and `Value` is the IP address for the hostname.
+-   If `Type=NS`, then `Name` is a domain and `Value` is the hostname of an authoritative DNS server that knows how to obtain the IP addresses for hosts in the domain. This record is used to route DNS queries further along in the query chain.
+-   If `Type=CNAME`, then `Value` is a canonical hostname for the alias hostname `Name`. This record can provide querying hosts the canonical name for a hostname.
+-   If `Type =MX`, then `Value` is the canonical name of a mail server that has an alias hostname `Name`. MX records the hostnames of mail servers to have simple aliases. Note that by using the MX record, a company can have the same aliased name for its mail server and for one of its other servers. To obtain the canonical name for the mail server, a DNS client would query for an MX record; to obtain the canonical name for the other server, the DNS client would query for the CNAME record.
+
+#### DNS Messages
+
+There are two kinds of DNS messages, the query and reply messages. Both query and reply messages have the same format. The semantics of the various field in a DNS message are as follows:
+
+-   The first 12 bytes is the *header section*, which has a number of fields. The first field is a 16-bit number that identifies the query. This identifier is copied into the reply message to a query, allowing the client to match received replies with sent queries. There are a number of flags in the flag field. A 1-bit query/reply flag indicates whether the message is a query (0) or a reply (1). A 1-bit authoritative flag is set in a reply message when a DNS server is an authoritative server for a queried name. A 1-bit recursion-desired flag is set when a client desires that the DNS server perform recursion when it doesn't have the record. A 1-bit recursion-available field is set in a reply if the DNS supports recursion. In the header, there are also four number of fields indicate the number of occurrences of the four types of data sections that follow the header.
+-   The *question section* contains information about the query that is being made. This section includes (1) a name field that contains the name that is being queried, and (2) a type field that indicates the type of question.
+-   In a reply message, the *answer section* contains the resource reccords for the name that was orginanlly queried. A reply can return mutiple Res in the answer, since a host name can have mutiple IP addresses.
+-   The *additional section* contains other helpful records. For example, the answer field in a reply to an MX query contains a resource record providing the canonical hostname of a mail server. The addtional section contains a Type A record providing the IP address for the canonical hostname of the mail server.
+
+**Nslookup program** can be used to send a DNS query message directly from the host you're working on.
+
+#### Inserting Records into the DNS database
+
+First register the domain name at a **registrar**, which is a commercial entity that verifies the uniqueness of the domain name and enters the domain name into the DNS database, and collects a small fee from you for its services.
+
+You want makesure type A, type NS, type MX to be inserted.
+
+## Peer-to-Peer File Distribution
+
+The applications described thus far, including the Web, e-mail, and DNS, all employ client-server arthitechture with significant reliance on always-on infrastructure servers. With a P2P architecture, there is a minimal (or no) reliance on always-on infrastructure servers. Instead, pairs of intermittently connected hosts, called peers, communicate directly with each other. These peers are not owned by a service provider, but are instead desktops and laptops controlled by users.
+
+In P2P file distribution, each peer can redistribute any portion of the file it has received to any other peers, thereby assisting the server in the distribution process. As of 2016, the most popular P2P file distribution protocol is BitTorrent, originally developed by Bram Cohen.
+
+#### Scalability of P2P Architectures
+
+In the client-server architecture, the distribution time increases linearly and without bound as the number of peers increases. However, for the P2P architecture, the minimum distribution time is not only always less than the distribution time of the client-server architecture; it is also less than a constant time for *any* number of peers *N*. Thus, applications with the P2P architecture can be self-scaling. This scalability is a direct consequence of peers being redistributors as well as consumers of bits.
+
+#### BitTorrent
+
+In BitTorrent, the collection of all peers participating in the distribution of a particular file is called a *torrent*. Peers in a torrent download equal-size *chunks* of the file from one another, with a typical chunk size of 256 kbytes. When a peer first joins a torrent, it has no chunks. Over time it accumulates more and more chunks. While it downloads chunks it also uploads chunks to other peers. Once a peer has acquired the entire file, it may (selfishly) leave the torrent, or (altruistically) remain in the torrent and continue to upload chunks to other peers. Also, any peer may leave the torrent at any time with only a subset of chunks, and later rejoin the torrent.
+
+Each torrent has an infrastructure node called *tracker*. When a peer joins a torrent, it registers itself with the tracker and periodically informs the tracker that it is still in the torrent. In this manner, the tracker keeps track of the peers that are participating in the torrent. A given torrent may have fewer than ten or more than a thousand peers participating at any instant of time.
+
+When a new peer joins the torrent, the tracker randomly selects a subset of peers from the set of participating peers, and sends the IP addresses of these 50 peers to the new peer. Possessing this list of peers, the new peer attempts to establish concurrent TCP connections with all the peers on this list. 
+
+At any given time, each peer will have a subset of chunks from the file, with different peers having different subsets. Periodically, the peer will ask each of its neighboring peers for the list of the chunks they have. When requesting chunks, a peer uses a technique called **rarest first**. The peer will request the rarest chunks among neighbors first. This manner makes the rarest chunks get more quickly redistributed, aiming to equalize the number of copies of each chunk in the torrent.
+
+To determine which errquests a peer should responds to, BitTorrent uses a clever trading algorithm. The peer continually measures the rate at which it receives bits and determines the four peers that are feeding it at the highest rate. The peer reciprocates by sending chunks to these same four peers. Every 10 seconds, recalculates the rates and possibly modified the set of four peers. In BitTorrent lingo, these four peers are said to be **unchoked**. Importantly, every 30 seconds, the peer also picks one additional neighbor at random and sends it chunks. This randomly chosen peer is said to be **optimistically unchoked** in BitTorrent lingo. If two peers are satisfied with the trading, they will put each otehr in their top four lists and continue trading with each other until one of the peers finds a better partner. The effect is that peers capable of uploading at compatible rates tends to find each other. The random neighbor selection also allows new peers to get chunks, so that they can have something to trade. All other neighboring peers besides these five peers are "choked", that is they do not receive any chunks from the peer. 
+
+This incentive mechanism for trading is often referred to as tit-for-tat. It has been shown that this incentive scheme can be circumvented. Nevertheless, the BitTorrent ecosystem is wildly successful, with millions of simultaneous peers actively sharing files in hundreds of thousands of torrents.
+
+Another application of P2P is Distributed Hast Table (DHT). It is a simple database, with the database records being distributed over the peers in a P2P system. DHTs have been widely implemented (e.g. in BitTorrent) and have been subject of extensive research.
+
+## 2.6 Video Streaming and Content Distribution Networks
+
+Streaming prerecorded video now accounts for the majority of the traffic in residential ISPs in North America. The Netflix and YouTube services along consumed a whopping 37% and 16%, respectively, of residential ISP traffic in 2015.
+
+### 2.6.1 Internet Video
+
+The prerecorded videos are placed on servers, and users send requests to the server to view the video *on demand*.
+
+A video is a sequence of images, typically being displayed at a constant rate, for example at 24 or 30 images per second. An uncompressed, digitally encoded image consists of an array of pixels, with each pixel encoded into a number of bits to represent luminance and color. An important characteristic of video is that it can be compressed, thereby trading off video quality with bit rate. Today's off-the-shelf compression algorithms can compress a video to essentially any bit rate desired.
+
+2.6.2 HTTP Streaming and DSAH
+
+In HTTP streaming, the video is simply stored at an HTTP server as an ordinary file with a specific URL. When a user wants to see the video, the client establishes a TCP connection with the server and issues an HTTP `GET` request for that URL. The server then sends the video file, within an HTTP response message, as quickly as the underlying network protocols and traffic condition will allow. On the client side, the bytes are collected in a client application buffer. Once the number of bytes in this buffer exceeds a predetermined threshold, the client application begins playback--specifically, the streaming video application periodically grabs video frams from the client application buffer, decompresses the frames, and display them on the user's screen. Thus, the video streaming application is displaying video as it is receiving and buffering frames corresponding to the latter parts of the video.
+
+HTTP streaming has a major shortcoming: All clients receive the same encoding of the video, despite the large variation in the amount of bandwidth available to a client, both across different clients and slao over time for the same client. This has led to the development of a new type of HTTP-based streaming, often referred to as **Dynamic Adaptive Streaming over HTTP (DASH)**. In DASH, the video is encoded into several different versions, with each version having a different bit rate and, correspondingly, a different quality level. The client selects different chunks one at a time with `HTTP GET` request message.
+
+The HTTP server also has a **manifest file**, which provides a URL for each version along with its bit rate. The client first request the manifest file and learns about the various versions, then selects one chunk at a time by specifying a URL and a byte range in an `HTTP GET` request message for each chunk. While downloading chunks, the client also measures the received bandwidth and runs a rate determination algorithm to select the chunk to request next.
+
+### 2.6.3 Content Distribution Networks
+
+For a Internet video company, perhaps the most staightforward approach to providing streaming video service is to build a single massive data center, store all of its videos and stream the videos directly from data center to clients worldwide. But there are three major problems: 1) Long communicaiton links with annoying freezing delays. 2) Popular video will likely be send many times over the same communication links, which waste network bandwidth and is costly for the Internet video company to pay for the traffic. 3) A single data center represents a single point of failure.
+
+There is a solution called **Content Distribution Networks (CDNs)**. A CDN manages servers in multiple geographically distributed locations, stores copies of the videos (and other types of Web content, including documents, images, and audio) in its servers, and attempts to direct each user request to a CDN location that will provide the better user exprience. The CDN may be a **private CDN**, that is owned by the content provider itself. The CDN may alternatively be a **third-party CDN** that distributs content on behalf of multiple content providers.
+
+CDNs typically adopt one of two different server placement philosophies:
+
+-   **Enter Deep**. One philosophy, pionnered by Akamai, is to *enter deep* into the access networks of Internet Service Providers, by deploying server clusters in access ISPs all over the world. Akamai takes this approach with clusters in approximately 1700 locations. The goal is to get close to end users, thereby improving user-perceived delay and throughput by decreasing the number of links and routers between the end user and the CDN server from which it receives content. But maintaining and managing the clusters becomes challenging.
+-   **Bring Home**. Another design philosophy, taken by Limelight and many other CDN companies, is to *bring the ISPs home* by building large clusters at a smaller number (for example, tens) of sites. Instead of getting inside the access ISPs, these CDNs typically place their cluster in Internet Exchange Points (IXPs). Compared with the enter-deep design philosophy, the bring-home design typically returns in lower maintenance and management overhead, possibly at the the expense of higher delay and lower throughput to end users.
+
+Many CDNs do not push videos to their clusters but use a simple pull strategy: Similar to Web caching.
+
+#### CDN Operation
+
+When a client is instructed to retrieve a specific video (URL), the CDN must intercept the request so that it can (1) determine a suitable CDN server cluster for that client at that time, and (2) redirect the client's request to a server in that  cluster.
+
+Most CDNs take advantage of DNS to intercept and redirect request.

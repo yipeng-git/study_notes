@@ -433,3 +433,517 @@ A Redis script is transactional by defination, so everything you can do with a R
 This duplication is due to the fact that scripting was introduced in Redis 2.6 while transactions already existed long before. However we are unlikely to remove the support for transactions in the short-term because it seems semantically opportune that even without resorting to Redis scripting it is still possible to avoid race conditions, especially since the implementation complexity of Redis transactions is minimal.
 
 However it is not impossible that in a non immediate future we'll see that the whole user base is justi using scripts. If this happens we may deprecate and finally remove transactions.
+
+# Redis Configuration
+
+## Passing argument via the command line
+
+Since Redis 2.6 it is possible to also pass Redis configuration parameter using the command line directly. This is very useful for testing purposes.
+
+```
+./redis-server --port 6380 --slaveof 127.0.0.1 6379
+```
+
+The format of the arguments passed via the command line is exactly the same as the one used in the redis.conf file, with the exception that the keyword is prefixed with --.
+
+Note that internally this generates an in-memory temporary config file (possibly concatenating the config file passed by the user if any) where arguments are translated into the format of redis.conf.
+
+## Changing Redis configuration while the server is running
+
+Ig is possible to reconfigure Redis on the fly without stopping and restarting the service, or querying the current configuration programmatically using the special commands `CONFIG SET` and `CONFT GET`.
+
+Not all the configuration directives are supported in this way, but most are supported as expected. Please refer to the documentation for more information.
+
+Note that modifying the configuration on the fly **has no effects on the redis.conf file** so at the next restart of Redis the old configuration will be used instead.
+
+Make sure to also modify the `redis.conf` file accordingly to the configuration you set using `CONFIG SET.` You can do it manually, or starting with Redis 2.8, you can just use `CONFIG REWRITE`, which will automatically scan your `redis.conf` file and update the fields which don't match the current configuration value. Fields non existing but set to the default value are not added. Comments inside your configuration file are retained.
+
+## Configuring Redis as a cache
+
+If you plan to use Redis just as a cache where every key will have an expireset, you may consider using the following configuration instead (assuming a max memory limit of 2 megabytes as example):
+
+```
+maxmemory 2mb
+maxmemory-policy
+```
+
+## Units
+
+-   1k => 1000 bytes
+-   1kb => 1024 bytes
+-   1m => 1000000 bytes
+-   1mb => 1024*1024 bytes
+-   1g => 1000000000 bytes
+-   1gb => 1024\*1024\*1024 bytes
+
+**Units are case insensitive so 1GB 1Gb 1gB are all the same.**
+
+## Includes
+
+Include one or more other config files. This is useful if you have a standard template that goes to all Redis servers but also need to customize a few per-server settings. Include files can include other files, so use this wisely.
+
+Note option "indlude" won't be rewritten by command "CONFIG REWRITE" from admin or Redis Sentinel. Since Redis always uses the last processed line as a value of a configuration directive, you'd better put includes at the beginning of redis.conf file to avoid overwriting config change at runtime.
+
+If instead you are interested in using includes to override configuration options, it is better to use include as the last line.
+
+```
+include /path/to/local.conf
+```
+
+
+
+## Network
+
+### Bind addresses
+
+By default, if no "bind" configuration directive is specified, Redis listens for connections from all the network interfaces available on the server. It is possible to listen to just one or multipl;e selected interfaces using the "bind" configuration directive, followed by one or more IP addresses.
+
+If the computer running Redis is directly exposed to the internet, binding to all the interfaces is dangerous and will expose the instance to everybody on the internet.
+
+```
+bind 127.0.0.1 ::1
+```
+
+>   ::1 is the 127.0.0.1 in IPv6.
+
+### Protected mode
+
+Protected mode is a layer of security protection, in order to avoid that Redis instances left open on the internet are accessed and exploited.
+
+When protected mode is on and if:
+
+1.  The server is not binding explicity to a set of addresses using the "bind" directive.
+2.  No password is configured.
+
+The server only accepts connections from clients connecting from the IPv4 and IPv6 loopback addresses and ::1, and from Unix domain sockets.
+
+By default protected mode is enabled. You should disable it only if you are sure you want clients from other hosts to connect to Redis even if no authentication is configured, nor a specific set of interfaces are explicitly listed using the "bind" directive.
+
+```
+protected-mode yes
+```
+
+### Ports
+
+Accepting connections on the specified port, default is 6379. If port 0 is specified Redis will not listen on a TCP socket.
+
+```
+port 6379
+```
+
+### TCP listen() backlog
+
+In high requests-per-second environments you need an high backlog in order to avoid slow clients connections issues. Note the Linux kernel will silently truncate it to the value of /proc/sys/net/core/somaxconn so make sure to raise both of the value of somaxconn and tcp_max_syn_backlog in order to get the desired effect.
+
+```
+tcp-backlog 511
+```
+
+### Unix socket
+
+Specify the path for the Unix socket that will be used to listen for incoming connections. There is no default, so Redis will not listen on a unix socket when not specified.
+
+``` 
+# unixsocket /var/run/redis/redis.sock
+# unixsocketperm 700
+```
+
+### Timeout
+
+Close the connection after a client is idle for N seconds (0 to disable)
+
+```
+timeout 0
+```
+
+### TCP keepalive
+
+If non-zero, use SO_KEEPALIVE to send TCP ACKs to clients in absence of communication. This is useful for two reasons:
+
+1.  Detect dead peers.
+2.  Take the connection alive from the point of view of network equipment in the middle.
+
+On Linux, the specified value (in seconds) is the period used to send ACKs.
+Note that to close the connection the double of the time is needed.
+On other kernels the period depends on the kernel configuration.
+
+A reasonable value for this option is 300 seconds, which is the new Redis default starting with Redis 3.2.1/
+
+```
+tcp-keepalive 300
+```
+
+## General
+
+### Daemonize
+
+By default Redis does not run as a deamon. Use 'yes' if you need it.
+Note that Redis will write a pid file in /var/run/redis.pid when daemonized.
+
+```
+daemonize yes
+```
+
+### Pidfile
+
+If a pid file is specified, Redis writes it where specified at startup and removes it at exit.
+
+When the server runs non daemonized, no pid file is created if none is specified in the configuration. When the server is daemonized, the pid file is used even if not specified, defaulting to "/var/run/redis.pid".
+
+Creating a pid file is best effort: if redis is not able to create it nothing bad happens, the server will start and run normally.
+
+```
+pidfile /var/run/redis/redis-server.pid
+```
+
+### Loglevel
+
+Specify the server verbosity level. This can be one of:
+
+-   debug (a lot of information, useful for development/testing)
+-   verbose (many rarely useful info, but not a mess like the debug level)
+-   notice (moderately verbose, what you want in production probably)
+-   warning (only very important / critical messages are logged)
+
+```
+loglevel notice
+```
+
+### Number of databases
+
+Set the number of databases. The default database is DB 0, you can select a different one on a per-connection basis using SELECT <dbid> where dbid is a number bettween 0 and 'databases'-1.
+
+```
+databases 16
+```
+
+## Snapshotting
+
+### Save the DB on disk
+
+Save <seconds> <changes>
+
+Will save the DB if both the given number of seconds and the given number of write operations against the DB occurred.
+
+In the example below the behaviour will be to save:
+
+-   After 900 sec (15 min) if at least 1 key changed
+-   After 300 sec (5 min) if at least 10 keys changed
+-   After 60 sec if at least 10000 keys changed
+
+Note: you can disable saving completly by commenting out all "save" lines.
+
+It is also possible to remove all the previously configured save points by adding a save directive with only a single empty string argument like `save ""`
+
+```
+save 900 1
+save 300 10
+save 60 10000
+```
+
+### Stop on failure
+
+By default Redis will stop accepting writes if RDB snapshots are enabled (at least one save point) and the latest background save failed. This will make the user aware (in a hard way) that data is not persisting on disk properly, otherwise chances are that no one will notice and some disaster will happen.
+
+If the background saving process will start working again Redis will automatically allow writes again.
+
+However if you have setup your proper monitoring of the Redis server and persistence, you may want to disable this feature so that Redis will continue to work as usual even if there are problem with disk, permisisons, and so forth.
+
+```
+stop-writes-on-bgsave-error yes
+```
+
+### Compression string objects
+
+Compress string objects using LZF when dump .rdb databases? For default that's set to 'yes' as it's almost always a win. If you want to save some CPU in the saving child set it to 'no' but the dataset will likely be bigger if you have sompressible values or keys.
+
+```
+rdbcompression yes
+```
+
+###  Checksum
+
+Since version 5 of RDB a CRC64 checksum is placed at the end of the file. This makes the format more resistant to corruption but there is a performance hit to pay (around 10%) when saving and loading RDB files, so you can disable it for maximum performances.
+
+RDB files created with checksum disabled have a checksum of zero that will tell the loading code to skip the ckeck.
+
+```
+rdbchecksum yes
+```
+
+### Filename
+
+The filename where to dump the DB.
+
+```
+dbfilename dump.db
+```
+
+
+
+### Working directory
+
+The DB will be written inside this directory, with the filename specified above using the 'dbfilename' configuration directive.
+
+The Append Only File will also be created inside this directory.
+
+Note that you must specify a directory here, not a file name.
+
+```
+dir /var/lib/redis
+```
+
+## Replication
+
+Master-Slave replication. TODO
+
+## Security
+
+Require clients to issue `AUTH <PASSWORD>` before processing any other commands. This might be useful in environments in which you do not trust others with access to the host running redid-server.
+
+This should stay commented out for backword compatibility and because most people do not need auth (e.g. they run their own servers).
+
+Warning: since Redis is pretty fast an outside user can try up to 150k passwords per second against a good box. This means that you should use a very strong password otherwise it will be very easy to break.
+
+```
+requirepass foobared
+```
+
+Or set password in command line:
+
+```
+config set requirepass 123456
+```
+
+## Limits
+
+### Maxclients
+
+Set the max number of connected clients at the same time. By default this limit is set 1000 clients, however if the Redis server is not able to configure the process file limit to allow for the specified limit the max number of allowed clients is set to the current file limit minus 32 (as Redis reserves a few file descriptors for internal uses).
+
+```
+# maxclients 10000
+```
+
+### Maxmemory
+
+Don't use more memory than the specified amount of bytes. When the memory limit is reached Redis will try to remove keys according to the eviction policy selected (see maxmemory-policy).
+
+If Redis can't remove keys according to the policy, or if the policy is set to 'noeviction', Redis will start to reply with errors to commands that would use more memory, like `SET`, `LPUSH`, and so on, and will continue to reply to read-only commands like `GET`.
+
+This option is usually useful when using Redis as an LRU cache, or to set a hard memory limit for an instance (using the 'noeviction' policy).
+
+WARNING: If you have slaves attached to an instance with maxmemory on, the size of the output buffers needed to feed the slaves are subtracted from the used memory count, so that network problems / resyncs will not trigger a loop where keys are evicted, and in turn the output buffer of slaves is full with DELs of keys evicted triggering the deletion of more keys, and so forth until the database is completely emptied.
+
+In short... if you have slaves attached it is suggested that you set a lower limit for maxmemory so that there is some free RAM on the system for slave output buffers (but this is not neede if the policy is 'noeviction').
+
+```
+# maxmemory <bytes>
+```
+
+### Maxmemory policy
+
+How Redis will select what to remove when maxmemory is reached. You can select among five behaviors:
+
+-   volatile-lru -> remove the key with an expire set using an LRU algorithm
+-   allkeys-lru -> remove any key according to the LRU algorithm
+-   volatile-random -> remove a random key with an expire set
+-   allkeys-random ->remove a random key, any key
+-   volatile-tll -> remove the key with the nearest expire time (minor TTL)
+-   noeviction -> don't expire at all, just return an error on write operations
+
+Note: with any of the above policies, Redis will return an error on write operations, when there are no suitable keys for eviction. 
+At the date of writing these commands are: `set setnx setex append incr decr rpush lpush rpushx lpushx linsert lset rpoplpush sadd sinter sinterstore sunion sunionstore sdiff sdiffstore zadd zincrby zunionstore zinterstore hset hsetnx hmset hincrby incrby decrby getset mset msetnx exec sort`
+
+The default is:
+
+```
+# maxmemory-policy noeviction
+```
+
+LRU and mimnal TTL algorithms are not precise algorithms but approximated algorithms (in order to save memory), so you can tune it for speed or accuracy. For default Redis will check five keys and pick the one that was used less recently, you can change the sample size using the following configuration directive.
+
+```
+# maxmemory-samples 5
+```
+
+## Append Only Mode
+
+### Appendonly
+
+By default Redis asynchronously dumps the dataset on disk. This mode is good enough in many applications, but an issue with the redis process or a power outage may result into a few minutes of writes lost (depending on the configured save points).
+
+The Append Only File is an alternative presistence mode that provides much better durability. For instance using the default data fsync policy (see later in the config file) Redis can lose just one second of writes in a dramatic event like a server power outage, or a single write if something wrong with the Redis process itself happends, but the operating systme is still running correctly.
+
+AOF and RDB persistence can be enabled at the same time withou problems. If the AOF is enabled on startup Redis will load the AOF, that is the file with the better durablity guarantees.
+
+Please check http://redis.io/topics/persistence for more information.
+
+```
+appendonly no
+```
+
+### Filename
+
+The name of the append only file (default: "appendonly.aof").
+
+```
+appendfilename "appendonly.aof"
+```
+
+### fsync()
+
+The fsync() call tells the Operating System to actually write data on disk instead of waiting for more data in the output buffer. Some OS will really flush data on disk, some other OS will just try to do it ASAP.
+
+Redis supports three different modes:
+
+-   no: don't fsync, just let the OS flush the data when it wants. Faster. 
+-   always: fsync after every write to the append only log. Slow, Safest.
+-   everysec: fsync only one time every second. Compromise.
+
+The default is "everysec", as that's usually the right compromise between speed and data safety. It's up to you to understand if you can relax this "no" that will let the operating system flush the output buffer when it wants, for better performances (but if you can live with the ida of some data loss consider the dafault persistence mode that's snapshotting), or on the contrary, use "always" that's very slow but a bit safer than everysec.
+
+More details please check the following article:
+http://antirez.com/post/redis-persistence-demystified.html
+
+If unsure, use "everysec".
+
+```
+# appendfsync always
+appendfsync everysec
+# appendfsync no
+```
+
+TODO
+
+## LUA Scripting
+
+## Redis Cluster
+
+## Slow Log
+
+## Latency Monitor
+
+## Event Notification
+
+## Advanced Config
+
+# Redis Persistence
+
+Redis provides a different range of persistence options:
+
+-   **RDB** (Redis Database): The RDB persistence performs point-in-time snapshots of your dataset at specified intervals.
+-   **AOF** (Append Only File): The AOF persistence logs every write operation received by the server, that will be played again at server startup, reconstructing the original dataset. Commands are logged using the same format as the Redis protocol itself, in an append-only fashion. Redis is able to rewrite the log in the background when it gets too big.
+-   **No persistence**: If you wish, you can disable persistence completely, if you want your data to just exist as long as the server is running.
+-   **RDB + AOF**: It is possible to combine both AOF and RDB in the same instance. Notice that, in this case, when Redis restarts the AOF file will be used to reconstruct the original dataset since it isguaranteed to be the most complete.
+
+The most important thing to understand is the different trade-offs between the RDB and AOF persistence. Let's start with RDB:
+
+## RDB advantages
+
+-   RDB is a very compact single-file point-in-time representation of your Redis data. RDB files are perfect for backups. For instance you may want to archive your RDB files every hour for the latest 24 hours, and to save an RDB snapshot every day for 30 days. This allows you to easily restore different versions of the data set in case of disasters.
+-   RDB is very good for disater recovery, being a single compact file that can be transferred to far data centers, or onto Amazon S3 (possibly encrypted).
+-   RDB maximize Redis performances since the only work the Redis parent process needs to do in order to persist is forking a child that will do all the rest. The parent instance will never perform disk I/O or alike.
+-   RDB allows faster restarts with big datasets compared to AOF.
+-   On replicas, RDB supports partial resynchronizations after restarts and failovers.
+
+## RDB disadvantages
+
+-   RDB is NOT good if you need to minize the chanceof data loss incase Redis stops working (for example after a power outage). You can configure different **save points** where an RDB is produced (for instance after at least five minutes and 100 writes against the data set, but you can have multiple save points). However you'll usually create an RDB snapshot every five minutes or more, so in case of Redis stopping working without a correct shutdown for any reason you should be prepared to loss the latest minutes of data.
+-   RDB needs to `fork()` often in order to persist on disk using a child process. `Fork()` can be time cosuming if the dataset is big, and may result in Redis to stop serving clients for some millisecond or even for one second if the dataset is very big and the CPU performance not great. AOF also needs to `fork()` but you can tune how often you want to rewrite your logs without any trade-off on durability.
+
+## AOF advantages
+
+-   Using AOF Redis is much more durable: you can have different fsync policies: no fysnc at all, fysnc every second, fysnc at every query. With the default policy of fsync every second write performances are still great (fsync is performed using a background thread and the main thread will try hard to perform writes when no fsync is in progress.) but you can only loss one second worth of writes.
+-   The AOF log is an append only log, so there are no seeks, nor corruption problems if there is power outage. Even if the log ends with an half-written command for some reason (disk full or other reasons) the refis-check-aof toll is able to fix it easily.
+-   Redis is able to sutomatically rewrite the AOF  in background when it gets too big. The rewrite is completely safe as while Redis continues appending to the old file, a completely new one is produced with the minimal set of operations needed to create the current data set, and once this second file is ready Redis switches the two and starts appending to the new one.
+-   AOF contains a log of all the operations one after the other in an easy to understand and parse format. You can even easily export an AOF file. For instance even if you've accidentally flushed everything using the `FLUSHALL` command, as long as no rewrite of the log was performed in the meantime, you can sitll save your data set just by stopping the server, removing the latest command, and restart Redis again.
+
+## AOF disadvantages
+
+-   AOF files are usually bigger than the equivalent RDB files for the same dataset.
+-   AOF can be slower than RDB depending on the exact fsync policy. In general with fysnc set to *every second* performance is still very high, and with fsync disabled it should be exactly as fast as RDB even under high load. Still RDB is able to provide more guarantees about the maximum latency even in the case of a huge write load.
+-   In the past we experienced rara bugs in specific commands (forinstance there was one involving blocking commands like `BRPOPLPUSH`) causing the AOF produced to not reproduce exactly the same dataset on reloading. These bugs are rare and we have tests in the test suite creating random complex datasets automatically and reloading them to check everything is fine. However, these kind of bugs are almost impossible with RDB persistence. To make this point clear: the Redis AOF works by increamentally updating an existing state, like MySQL or MongoDB does, while the RDB snapshotting creats everything from scratch again and again, that is conceptually more robust. However - 1) It should be noted that every time the AOF is rewritten by Redis it is recreated from scratch starting from the actual data contained in the data set, making resistance to bugs stronger compared to an always appending AOF file (or one rewritten reading the old AOF instead of reading the data in memory). 2) We have never had a single report from users about an AOF corruption that was detected in the real world.
+
+## Ok, so what should I use?
+
+The general indication is that you should use both persistence methods if you want a degree of data safety comparable to what PostgreSQL can provide you.
+
+If you care a lot about your data, but still can live with a few minutes of data loss in case of disasters, you can simply use RDB alone.
+
+There are many users using AOF alone, but we discourage it since to have an RDB snapshot from time to time is a great idea for doing database backups, for faster restarts, and in the event of bugs in the AOF engine.
+
+Note: for all these reasons we'll likely end up unifying AOF and RDB into a single persistence mode in the future (long temr plan).
+
+The following sections will illustrate a few more details about the two persistence models.
+
+## Snapshotting
+
+By default Redis saves snapshots of the dataset on disk, in a binary file called `dump.rdb`. You can configure Redis to have it save the dataset every N seconds if there are at least M changes in the dataset, or you can manually call the `SAVE` or `BGSAVE` commands.
+
+This strategy is known as *snapshotting*.
+
+### How it works
+
+Whenever Redis needs to dump the dataset to disk, this is what happens:
+
+-   Redis forks. We now have a child and a parent process. 
+-   The child starts to write the dataset to a temporary RDB file.
+-   When the child is done writing the new RDB file, it replaces the old one.
+
+This method allows Redis to benefit from copy-on-write semantics.
+
+## Append-only file
+
+Snapshotting is not very durable. If your computer running Redis stops, your power line fails, or your accidentally `kill -9` your instance, the latest data written on Redis will get lost. While this may not be a big deal for some applications, there are use cases for fully durability, and in these cases Redis was not a viable option.
+
+The *append-only file* is an alternative, fully-durable strategy for Redis. It became available in version 1.1.
+
+You can turn on the AOF in your configuration file: `appendonly yes`
+
+From now on, every time Redis receives a command that changes the dataset (e.g. `SET`) it will append it to the AOF. When you restart Redis it will re-play the AOF to rebuild the dataset.
+
+### Log rewriting
+
+As you can guess, the AOF gets bigger and bigger as write operations are performed. For example, if you are incrementing a counter 100 times, you will end up with a single key in your dataset containing the final value, but 100 entries in your AOF. 99 of those entries are not needed to rebuild the current state.
+
+So Redis supports an interesting feature: it is able to rebuild the AOF in background without interrupting service to clients. Whenever you issue a `BGREWRITEAOF` Redis will write the shortest sequence of commands needed to rebuild the current dataset in memory. If you're using the AOF with Redis 2.2 you will need to run `BGREWRITEAOF` from time to time. Redis 2.4 is able to trigger log rewriting automatically (see the 2.4 example configuration file for more information).
+
+### How durable is the append only file?
+
+You can configure how many times Redis will fsync data on disk. There are three options:
+
+-   `appendfsync always`: `fsync` every time new commands are appended to the AOF. Very very slow, very safe. Note that the commands are appended to the AOF after a batch of commands from multiple clients or a pipeline are executed, so it means a single write and a single fysnc (before sending the replies).
+-   `appendfsync every sec`: `fsync` every second. Fast enough in (2.4 likely to be as fast as snapshotting), and you can lose 1 second of data if there is a disaster.
+-   `appendfsync no`: Never `fsync`, just put your data in the hands of the OS. The faster and less safe method. Normally Linux will flush data every 30 seconds with this configuration, but its up to the kernal exact tuning.
+
+The suggested (and default) policy is to `fsync` every second. It is both very fast and pretty safe. The `always` policy is very slow in practice, but it supports group commit, so if there are mutiple parallel writes Redis will try to perform a single `fysnc` operation.
+
+### What should I do if my AOF gets truncated?
+
+It is possible that the server crashed while writing the AOF file, or that the volume where the AOF file is stored was full at the time of writing. When this happens the AOF still contains consistent data representing a given point-in-time version of the dataset (that may be old up to one second with the default AOF fsync policy), but the last command in the AOF could be truncated. The lastest major versions of Redis will be able to load the AOF anyway, just discarding the last non well formed command in the file. In this case the server will emit a log like the following:
+
+```
+* Reading RDB preamble from AOF file...
+* Reading the remaining AOF tail...
+# !!! Warning: short read while loading the AOF file !!!
+# !!! Truncating the AOF at offset 439 !!!
+# AOF loaded anyway because aof-load-truncated is enabled
+```
+
+You can change the default configuration to force Redis to stop in such cases if you want, but the default configuration is ocntinue regardless the fact the last command in the file is not well-formed, in order to guarantee availability after a restart.
+
+Old versions of Redis may not recover, and may require the following steps:
+
+-   Make a backup copy of your AOF file.
+
+-   Fix the original file using the `redis-check-aof` tool that ships with Redis: 
+
+    ```
+    $ redis-check-aof --fix
+    ```
+
+-   Optionally use `diff -u` to check what is the difference between two files.
+
+-   Restart the server with the fixed file.
+
