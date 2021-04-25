@@ -947,3 +947,79 @@ Old versions of Redis may not recover, and may require the following steps:
 
 -   Restart the server with the fixed file.
 
+### What should I do if my AOF gets corrupted?
+
+The best thing to do is to run the `redis-check-aof` utility, initially without the `--fix` option, then understand the problem, jump at the given offset in the fie, and seee if it is possble to manually repair the file: the AOF uses the same format of the Redis protocol ans is quite simple to fix manually. Otherwise it is possible to let the utility fix the file for us, but in that cass all the AOF portion from the invalid part to the end of the file may be discarded, leading to a massive amount of data loss if the corruption happended to be the initial part of the file.
+
+### How it works
+
+Log rewriting uses the same copy-on-write trick already in use for snapshotting. This is how it works:
+
+-   Redis forks, so now we have a child and a parent process.
+-   The child starts writing the new AOF in a temporary file.
+-   The parent accumulates all the new changes in a in-memory buffer (but at the same time it writes the new changes in the old append-only file, so if the rewriting fails, we are safe).
+-   When the child is done rewriting the file, the parent gets a signal, and appends the in-memory buffer at the end of the file generaged by the child.
+-   Profit! Now Redia atomically renames the old file into the new one, and starts appending new data into the new file.
+
+## Interactions between AOF and RDB persistence
+
+Redis >= 2.4 makes sure to avoid triggering an AOF rewrite when a RDB snapshotting operation is already in progress, or allowing a `BGSAVE` while the AOF rewrite is in progress. This prevents two Redis background processes from doing heavy disk I/O at the same time.
+
+When snapshotting is in progress and the user explicitly requests a log rewrite operation using `BGREWRITEAOF` the server will reply with an OK status code telling the user the operation is scheduled, and the rewrite will start once the snapshotting is completed.
+
+In the case both AOF and RDB persistence are enabled and Redis restarts the AOF file will be used to reconstruct the original dataset since it is guaranteed to be the most complete.
+
+## Backing up Redis data
+
+Before starting this section, makesure to read the following sentence: **Make Sure to Backup Your Database**. Disk break, instances in the cloud disappear, and so forth: no backups means huge risk of data disaappearing into /dev/null.
+
+Redis is very data backup friendly since you can copy RDB files while the database is running: the RDB is never modified once produced, and while it gets produced it uses a temporary name and is renamed into this final destination atomically using rename(2) only when the new snapshot is complete.
+
+This means that copying the RDB file is completely safe while the server is running. This is what we suggest:
+
+-   Creating a cron job in your server creating hourly snapshots of the RDB file in one directory, and daily snapshot in a different directory.
+-   Every time the cron scrpt runs, make sure to call the `find` command to make sure too old snapshots are deleted: for instance you can take hourly snapshots for the latest 48 hours, and daily snapshots for one or two months. Make sure to name the snapshots with data and time information.
+-   At least one time every day make sure to transfer an RDB snapshot *outside your data center* or at least *outside the physical machine* running your Redis instance.
+
+If you run a Redia instance with only AOF persistence enabled, you can still copy the AOF in order to create backups. The file may lack the final part but Redis will be still able to load it.
+
+## Disaster recovery
+
+Disaster recovery in the context of REdis is basically the same story as backups, plus the ability to transfer those backups in many different external data centers. T his way data is secured even in the case of some catastrophic event affecting the main data center where Redis is running and producing its snapshots.
+
+Since many REdis users are in the startup scene and thus don't have plenty of money to spend we'll review the most interesting disaster recovery techniques that don't have too high costs.
+
+-   Amazon S3 and other similar services are a good way for imppplementing your disaster recovery system. Simply transfer your daily or hourly RDB snapshot to S3 in an encrypted form. You can encrypt your data using `gpg -c` (in symmetric encryption mode). Make sure to store your password in many different safe places (for instance give a copy to the most important people of your organization). It is recommended to use multiple storage services for improved data safety.
+-   Transfer your snapshot using SCP to far servers. This is a fairly simple and safe route: get a small VPS in a place that is very far from you, install ssh there, and generate an ssh client key without passphrase, then add it in the `authorized_keys` file of your small VPS. You are ready to transfer backups in an automated fashion. Get at least two VPS in two different providers for best results.
+
+It is important to understand that this system can easily fail if not implemented in the right way. At least make absolutely sure that after the transfer is completed your are able to verify the file size (that should match the one of the file you copied) and possibly the SHA1 digest if you are using a VPS.
+
+You also need some kind of independent alert system if the transfer of fresh backups is not working for some reason.
+
+# Redis Pub/Sub
+
+`SUBSCRIBE`, `UNSUBSCRIBE` and `PUBLISH` implement the Publish/Subscribe messaging paradigm where (citing Wikipedia) sender (publisher) are not programmed to send their messages to specific receivers (subscribers). Rather, published messages are characterized into channels, without knowledge of what (if any) subscribers there may be. Subscribers express interest in one or more channels, and only receive messages that are of interest, without knowledge of what (if any) publishers there are. This decouping of publishers and subscribers can allow for greater scalability and more dynamic network topology.
+
+For instance in order to subscribe to channels `foo` and `bar` the client issues a `SUBSCRIBE` providing the names of the channels:
+
+```
+SUBSCRIBE foo bar
+```
+
+Messages sent by other clients to these channels will be pushed by Redis to all the subscribed clients.
+A client subscribed to one or more channels should not issue commands, although it can subscribe and unsubscribe to and from other channels. The replies to subscription and unsubscription operations are sent in the form of messages, so that the client can just read a coherent stream of messages where the first element incicates the type of message. The commands that are allowed in the context of a subscribe client are `SUBSCRIBE`, `PSUBSCRIBE`, `UNSUBSCRIBE`, `PUNSUBSCRIBE`, `PINT` and `QUIT`.
+
+Please note that `redis-cli` will not accept any commands once in subscribed mode and can only quit the mode with `Ctrl-C`.
+
+## Format of pushed messages
+
+A message is a Array reply with three elements.
+
+The first element is the kind of the message:
+
+-   `subscribe`: means that we successfully subscribed to the channel given as the second element in the reply. The third argument represents the number of channels we are currently subscribed to.
+-   `unsubscribe`: means that we successfully unsubscribed from the channel given as second element in the reply. The third argument represnets the number of channels we are currently subscribed to. When the last argument is zero, we are no longer subscibed to any channel, and the client can issue any kind of Redis command as we are outside the Pub/Sub state.
+-   `message`: it is a message received as a result of a `PUBLISH` command issued by another client. The second element is the name of the originating channel, and the third argument is the actual message payload.
+
+## Database & Scoping
+
