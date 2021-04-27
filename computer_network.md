@@ -436,7 +436,7 @@ Depending on the application and how the application is being used, the series o
 
 Steps of transferring a Web page from server to client for the case of non-presistent connections. Suppose the page consists of a base HTML file and 10 JPEG images, and all 11 of these objects reside on the same server. Further suppose the URL for the base HTML file is http://www.example.edu/folder/home.index
 
-1.  The HTTP client process initiates a TCP connection to the server www.example.com on port number 80, which is the default port number for HTTP.l Associated with the TCP connection, there will be a socket at the client and a socket at the server.
+1.  The HTTP client process initiates a TCP connection to the server www.example.com on port number 80, which is the default port number for HTTP. Associated with the TCP connection, there will be a socket at the client and a socket at the server.
 2.  The HTTP clients sends a HTTP request message to the server via its socket. The request message includes the path name `/folder/home.index`.
 3.  The HTTP server process receives the request message via its socket, retrieves the object `/folder/home.index` from its storage, encapsulates the object in an HTTP response message, and sends the response message to the client via its socket.
 4.  The HTTP server process tells TCP to close the TCP connection. (But the TCP doesn't actually terminate the connection until it knowns for sure that the client has received the response message intact.)
@@ -940,4 +940,74 @@ At a high level, P2P video streaming is very similar to BitTorrent file download
 Recently, Kankan has migrated to a hybrid CDN-P2P streaming system. Specifically, Kankan now deploys a few hundred servers within China ans pushes video content to these servers. This Kankan CDN plays a major role in the start-up stage of video streaming. In most cases, the client requests the beginning of the content from CDN servers, and in parallel requests content from peers. When the total P2P traffic is sufficient for video playback, the client will cease streaming from the CDN and only stream from peers. But if P2P streaming traffic becomes insufficient, the client will restart CDN connections and return to the mode of hybrid CDN-P2P streaming. In this manner, Kankan can ensure short initial start-up delays while minimally relying on costly infrastructure servers and bandwidth.
 
 ## 2.7 Socket Programming: Creating Network Applications
+
+### 2.7.1 Socket Programming with UDP
+
+The sender's IP address and port number are attached by the OS, not by UDP application. The destination address and port should be attached to the packet before dropping the packet to the socket.
+
+#### UDPClient.py
+
+```python
+from socket import *
+serverName = 'hostname'
+serverPort = 12000
+clientSocket = socket(AF_INET, SOCK_DGRAM) # AF_INET indicates IPv4 network, SOCK_DGRAM indicates UDP socket
+message = raw_input('Input lowercase sentence:') # py build-in function for user input
+clientSocket.sendto(message.encode(), (serverName, serverPort))
+modifiedMessage, serverAddress = clientSocket.recvfrom(2048) # buffer size is 2048 bytes
+print(modifiedMessage.decode())
+clientSocket.close()
+```
+
+#### UDBServer.py
+
+```python
+from socket import *
+serverPort = 12000
+serverSocket = socket(AF_INET, SOCK_DGRAM)
+serverSocket.bind(('', serverPort)) # bind port 12000
+print("The server is ready to receive.")
+while True:
+  	message, clientAddress = serverSocket.recvfrom(2048) # receives from port 12000, the clientAddress contains both the IP and port
+    modifiedMessage = message.decode().upper()
+    serverSocket.sendto(modifiedMessage.encode(), clientAddress)
+```
+
+### 2.7.2 Socket Programming with TCP
+
+Connection-oriented protocol. Need to handshake and establish a TCP connection. The IP addresses and port numbers are associate with the TCP connection, so no need to attach the destination address to the packet before dropping it into the socket.
+
+#### TCPClient.py
+
+```python
+from socket import *
+serverName = 'servername'
+serverPort = 12000
+clientSocket = socket(AF_INET, SOCK_STREAM) # IPv4 and TCP socket
+clientSocket.connect((serverName, serverPort)) # estibalish TCP connection
+sentence = raw_input('Input lowercase sentence: ')
+clientSocket.send(sentence.encode())
+modifiedSentence = clientSocket.recv(1024)
+print('From Server: ', modifiedSentence.decode())
+clientSocket.close()
+```
+
+#### TCPServer.py
+
+```python
+from socket import *
+serverPort = 12000
+serverSocket = socket(AF_INET, SOCK_STREAM)
+serverSocket.bind(('', serverPort))
+serverSocket.listen(1) # listen for TCP connection requests on port 12000
+print('The server is ready to receive.')
+while True:
+  	connectionSocket, addr = serverSocket.accept() # complete handshakes and creating a TCP connection
+  	sentence = connectionSocket.recv(1024).decode()
+  	capitalizedSentence = sentence.upper()
+  	connectionSocket.send(capitalizedSentence.encode())
+  	connectionSocket.close()
+```
+
+
 

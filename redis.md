@@ -1023,3 +1023,118 @@ The first element is the kind of the message:
 
 ## Database & Scoping
 
+PubSub has no relation to the key space. It was made not interfere with it on any level, including database number.
+
+Publishing on db 10, will. be heard by a subscriber on db 1.
+
+If you need scoping of some kind, prefix the channels with the name of environment (test, staging, production).
+
+TODO: Put/Sub not complete
+
+# Replication
+
+At the base of Redis replication (excluding the high availability features provided as an additional layer by Redis Cluster or Redis Sentinel) there is a very simple to user and configure *leader follower* (master-slave) replication: it sllows replica Redis instances to be exact copies of master instances. The replica will automatically reconnect to the master every time the link breaks, and will attempt to be an exact copy of it *regardless* of what happens to the master.
+
+This system works using three main mechanisms:
+
+1.  When a master and a replica instances are well-connected, the master keeps the replica updated by sending a stream of commands to the replica, in order to replicate the effects on the dataset happening in the master side due to: client writes, keys expired or evicted, and any other action changing the master dataset.
+2.  When the link between the master and the replica breaks, for network issues or because a timeout is sensed in the master or the replica, the replica reconnects and attempts to proceed with a partial resynchronization: it means that it will try to just botain the part of the stream of commands it missed during the disconnection.
+3.  When a partial resynchronization is not possible, the replica will ask for a fun resynchronization. This will involve a more complex process in which the master needs to create a snapshot of all its data, send it to the replica, and then continue sending the stream of commands as the dataset changes.
+
+Redis uses by default asynchronous replication, which being low latency and high performance, is the natural replication mode for the vast majority of Redis use cases. However, Redis replicas asynchronously acknowledge the amount of data they received periodically with the master. So the master does not wait every time for a command to be processed by the replicas, however, it knows, if needed, what replica already processed what command. This allows having optional synchronous replication.
+
+Synchronous replication of certain data can be requested by the clients using the `WAIT` command. However `WAIT` is only able to ensure that there are the specified number of acknowledged copies in the other Redis instances, it does not turn a set of Redis instances into a CP system with strong consistency: acknowledged writes can still be lost during a failover, depending on the exact configuration of the Redis persistence. However with `WAIT` the probability of losing a write after a failure event is greatly reduced to certain hard to trigger failure modes.
+
+Check Redis Sentinel and Redis cluster documentation for high availability.
+
+Some very important facts about Redis replication:
+
+-   Redis uses asynchronous replication, with asynchronous replica-to-master acknowledges of the amount of data processed.
+-   A master can have multiple replicas.
+-   Replicas are able to accept connections from other replicas. Aside from connecting a number of replicas to the same master, replicas can also be connected to other replicas in a cascading-like structure. Since Redis 4.0, all the sub-replicas will receive exactly the same replication stream from the master.
+-   Redis replication is non-blocking on the master side. This means that the master will continue to handle queries when one or more replicas perform the initial synchronization or a partial resynchronization.
+-   Replication is also largely non-blocking on the replica side. While the replica is performing the initial synchronization, iit can handle queries using the old version of the dataset, assuming you configured Redis to do so in redis.conf. Otherwise, you can configure Redis replicas to return an error to clients if the replication stream is down. However, after the initial sync, the old dataset must be deleted and the new one must be loaded. The replica will block incoming connection during this brief window (that can be as long as many seconds for every large datasets). Since Redis 4.0 it is possible to configure Redis so that the deletion of the old dataset happens in a different thread, however loading the new initial dataset will still happen in the main thread and block the replica.
+-   Replication can be used both for scalability, in order to have multiple replicas for read-only queries, or simply for improving data safty and high availability.
+-   It is possible to use replication to avoid the cost of having the master writing the full dataset to disk: a typical technique involves configuring your master `redis.conf` to avoid persisting to disk at all, then connect a replica configured to save from time to time, or with AOF enabled. However this set up must be handled with care, since a restarting master will start with an empty dataset: if the replica tries to asynchronize with it, the replica will be emptied as well.
+
+## Safty of replication when master has persistenced turned off
+
+**Avoid restarting automatically** after a reboot.
+
+1.  We have a setup with node A acting as master, with persistence turned down, and nodes B and C replicating from A.
+2.  Node A crashes, however it has some auto-restart system, that restarts the process. However since persistence is turned off, the node restarts with an empty dataset.
+3.  Nodes B and C will replicate from node A, which is empty, so they'll effectively destroy their copy of data.
+
+When Redis Sentinel is used for high availability, it is still dangerous to turn off persistence on the master. The master can restart fast enough for Sentinel to not detect a failure.
+
+Auto restart of instances should be disabled when data safety is important and replication is used with master configured without persistence.
+
+## How Redis replication works
+
+Every Redis master has a replication ID: it is a large pseudo rendom string that marks a given story of the dataset. Each master also takes an offset that increments for every byte of replication stream that is produced to be sent to replicas, in order to update the state of the replicas with the new changes modifying the dataset. The replication offset is incremented even if no replica is actually connected, so b asically every given of: `Replication ID, offset` identifies an exact version of the dataset of a master.
+
+When replicas connect to mastesrs, they use the `PSYNC` command in order to send their old master replication ID and the offsets they processed so far. This way the master can send just the incremental part needed. However if there is not enough *backlog* in the master buffers, or if the replica is referring to an history which is no longer known, then a full resynchronizaiton happens: in this case the replica will get a full copy of the dataset, from scratch.
+
+This is how a full synchronizaiton works in more details:
+
+The master starts a background saving process in order to produce an RDB file. At the same time it starts to buffer all new write commands received from the clients. When the background saving is complete, the master transfer the database file to the replica, which saves it on disk, and then loads it into memory. The master will then send all buffered commands to the replica. This is done as a stream of commands and is in the same. format of the Redis protocol it self.
+
+## Diskless replication
+
+Normally a full resynchronization requires creating an RDB file on disk, then reloading the same RDB from disk in order to feed the replicas with the data.
+
+With slow disks this can be a very stressing operation for the master. Redis version 2.8.18 is the first version to have support for diskless replication. In this setup the child process directly sends the RDB over the wire to replicas, without using the disk as intermediate storage.
+
+## Configuration
+
+Just add `replicaof 192.168.1.1 6379` to the replica configuration file.
+
+## Read-only replica
+
+Since Redis 2.6, replicas support a read-only mode by adding `replica-read-only` in the redis conf file, and can be enabled and disabled at runtime using `CONFIG SET`.
+
+Note that **writable replicas before version 4.0 were incapable of expiring keys with a time to live set**.
+
+Also note that since Redis 4.0 replica writes are only local, and are not propagated to sub-replicas attached to the instance. Sub-replicas instead will always receive the replication stream identical to the one sent by the top-level master to the intermediate replicas.
+
+## Allow writes only with N attached replicas
+
+## How Redis replication deals with expires on keys
+
+## Configuring replication in Docker and NAT
+
+## The INFO and ROLE command
+
+## Partial resynchronizations after restarts and failovers
+
+Since Redis 4.0, when an instance is promoted to master after a failover, it wil be still able to perform a partial resynchronization with the replicas of the old master. To do so, the replica remembers the old replication and offset of its former master, so can provide part of backlkog to the connecting replicas even if they ask for the old replication.
+
+However the new replication ID of the promoted replica will be different, since it consistutes a different history of the dataset. For example, the master can return available and can continue accepting writes for some time, so using the same replication ID in the promoted replica would violate the rule that a replication ID and offset pair identifies only a single data set.
+
+Moreover, replicas - when powered off gently and restarted - are able to store in the `RDB` file the information needed in order to resynchronize with their master. This is useful in case of upgrades. When this is needed, it is better to user the `SHUTDOWN` command in order to perform a `save & quit` operation on the replia.
+
+It is not possible to partially resynchronize a replica that restarted via the AOF file. However the instance may be turned to RDB persistence before sutting down it, than can be restarted, and finally AOF can be enabled again.
+
+## Configure replicas
+
+-   port
+-   daemonize
+-   pidfile
+-   logfile
+-   dbfilename dump.rdb
+-   replicaof 192.168.1.1 6379
+-   masterauth <password>
+-   replica-read-only
+
+# High Availability
+
+# Latency Monitoring
+
+# Security
+
+# Redis Lua Scripting
+
+# Memory Optimization
+
+# Mass Inserttion
+
