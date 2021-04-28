@@ -996,6 +996,168 @@ It is important to understand that this system can easily fail if not implemente
 
 You also need some kind of independent alert system if the transfer of fresh backups is not working for some reason.
 
+# Redis Protocol specification
+
+Redis clients communicate with the REdis server using a protocol called **RESP**. RESP is a compromise between the following things:
+
+-   Simple to implement.
+-   Fast to parse.
+-   Human readable.
+
+## Networking layer
+
+A clients connects to a REdis server creating a TCP connection to the port 6379.
+
+## Request-REsponse model
+
+Redis accepts commands composed of differetn arguments. Once a command is received, it is processed and a reply is sent back to the client. This is the simplest model possible, however there are two exceptions:
+
+-   Reddis supports pipelining. So it is possible for clients to send mutiple commands at once, and wait for replies later.
+-   When a Redis client subscribes to a Pub/Sub channel, the protocol changes semantics and becomes a *push* protocol, that is, the client no longer requires sending commands, because the server will automatically send to the client new messages as soon as they are received.
+
+## RESP protocol description
+
+RESP is actually a serialization protocol that supports the following data types: Simple Strings, Errors, Integers, Bulk Strings and Arrays.
+
+The way RESP is used in Redis as a request-response protocol is the following:
+
+-   Clients send commands to a Redis server as a RESP Array of Bulk Strings.
+-   The server replies with one of the RESP types according to the command implementation.
+
+In RESP, the type of some data depends on the first byte:
+
+-   For **Simple Strings** the first byte of the reply is "+"
+-   For **Errors** the first byte of the reply is "-"
+-   For **Integers** the first byte of the reply is "."
+-   For **Bulk Strings** the first byte of the reply is "$"
+-   For **Arrays** the first byte of the reply is "*"
+
+## RESP Simple Strings
+
+Simple  Strings are a plus character, followed by a string that cannot contain a CR or LF, terminated by CRLF.
+
+String "OK": `+OK\r\n`
+
+## RESP Errors
+
+`-Error message\r\n`
+
+```
+-ERR unknown command 'foobar'
+-WRONGTYPE Operation against a key holding the wrong kind of value
+```
+
+## RESP Integers
+
+`:100\r\n`
+
+## RESP Bulk Strings
+
+Bulk Strings are used in order to represent a single binary safe string up to 512 MB in length.
+
+Bulk Strings are encoded in the following way:
+
+-   A "$" byte folled by the number of bytes composing the string, terminated by CRLF.
+-   The actual string data.
+-   A final CRLF.
+
+String "foobar":
+
+```
+$6\r\nfoobwr\r\n
+```
+
+An empty string:
+
+```
+$0\r\n\r\n
+```
+
+**Null Bulk STring**
+
+```
+$-1\r\n
+```
+
+## RESP Arrays
+
+RESP Arrays format:
+
+-   A * character as the first byte, followed by the number of elements in the array as a decimal number, folowed by CRLF.
+-   An additional RESP type for every element of the Array.
+
+An empty Array:
+
+```
+*0\r\n
+```
+
+An array of two RESP Bulk Strings "foo" and "bar":
+
+```
+*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n
+```
+
+Arrays can contains mixed types.
+
+**Null Array**
+
+```
+*-1\r\n
+```
+
+## Null elements in Arrays
+
+["foo",nil,"bar"]:
+
+```
+*3\r\n
+$3\r\n
+foo\r\n
+$-1\r\n
+$3\r\n
+bar\r\n
+```
+
+## Sending commands to a Redis Server
+
+**LLEN mylist**
+
+```
+C: *2\r\n
+C: $4\r\n
+C: LLEN\r\n
+C: $6\r\n
+C: mylist\r\n
+
+S: :48293\r\n
+```
+
+## Multiple commands and pipelining
+
+## Inline Commands
+
+## High performance parser for the Redis protocol
+
+```c
+#include <stdio.h>
+
+int main(void) {
+    unsigned char *p = "$123\r\n";
+    int len = 0;
+
+    p++;
+    while(*p != '\r') {
+        len = (len*10)+(*p - '0');
+        p++;
+    }
+
+    /* Now p points at '\r', and the len is in bulk_len. */
+    printf("%d\n", len);
+    return 0;
+}
+```
+
 # Redis Pub/Sub
 
 `SUBSCRIBE`, `UNSUBSCRIBE` and `PUBLISH` implement the Publish/Subscribe messaging paradigm where (citing Wikipedia) sender (publisher) are not programmed to send their messages to specific receivers (subscribers). Rather, published messages are characterized into channels, without knowledge of what (if any) subscribers there may be. Subscribers express interest in one or more channels, and only receive messages that are of interest, without knowledge of what (if any) publishers there are. This decouping of publishers and subscribers can allow for greater scalability and more dynamic network topology.
@@ -1025,11 +1187,92 @@ The first element is the kind of the message:
 
 PubSub has no relation to the key space. It was made not interfere with it on any level, including database number.
 
-Publishing on db 10, will. be heard by a subscriber on db 1.
+Publishing on db 10, will be heard by a subscriber on db 1.
 
 If you need scoping of some kind, prefix the channels with the name of environment (test, staging, production).
 
-TODO: Put/Sub not complete
+## Wire protocol exmaple
+
+Subscribe channel first and channel second:
+
+```
+> SUBSCRIBE first second
+```
+
+The client receives
+
+```
+*3
+$9
+subscribe
+$5
+first
+:1
+*3
+$9
+subscribe
+$6
+second
+:2
+```
+
+If another client issue a `PUBLISH` operation against the channel name second:
+
+```
+> PUBLISH second Hello
+```
+
+The subscriber receives:
+
+```
+*3
+$7
+message
+$6
+second
+$5
+Hello
+```
+
+Now the client unsubsscribes it self from all the channels usning the `UNSUBSCRIBE` command without additional arguments:
+
+```
+UNSUBSCRIBE
+```
+
+The client receives from the server:
+
+```
+*3
+$11
+unsubscribe
+$6
+second
+:1
+*3
+$11
+unsubscribe
+$5
+first
+:0
+```
+
+## Pattern-matching subscriptions
+
+```
+PSUBSCRIBE news.*
+```
+
+## Messages matching both a pattern and a channel subscription
+
+```
+SUBSCRIBE foo
+PSUBSCRIBE f*
+```
+
+## Redis Pub/Sub implementation
+
+Redis-server use dictionary/map to maintain channels. The keys is are the channel names and the values are all subscribers as a list.
 
 # Replication
 
