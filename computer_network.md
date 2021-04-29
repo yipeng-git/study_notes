@@ -1011,3 +1011,29 @@ while True:
 
 
 
+# 3. Transport Layer
+
+## 3.1 Introduction and Transport-Layer Services
+
+Transport-layer protocol provides for **logical communication** between application processe srunning on different hosts. By *logical communication*, we mean that from application's perspective, it is as if the hosts running the processes were directly connected; in reality, the hosts may be on opposite sides of the planet, connected via numerous routers and a wide range of link types. Application processes use the logical communication provided by the transport layer to send messages to each other, free from the worry of details of the physical infrastructure used to carry these messages.
+
+Transport-layer protocols are implemented in the end systems but not in network routers. On the sending side, transport layer converts the application-layer messages it receives into transport layers packets, known as transport-layer **segments**. This is done by breaking the application messages into smaller chunks and adding a transport-layer header to each chunk to create the transport-layer segment. The transport-layer then passes the segment to the network layer at the sending system, where the segment is encapsulated within a network-layer packet (a datagram) and send to the destination. Network routers act only on the network-layer fields of the datagram.
+
+### 3.1.1 Relationship Between Transport and Network Layers
+
+Transport-layer lies just above the network layer in the protocol stack. It provides logical communication between *processes* running on different hosts, and a network layer protocol provides logical communication between *hosts*. This distinction is subtle but important.
+
+### 3.1.2 Overview of the Transport Layer in the Internet
+
+**UDP** provides an unreliable, connectionless service to the invoking application. **TCP** provides a reliable, connection-oriented service to the invoking application.
+
+The transport-layer packets are referred as *segment*. However, the Internet literature (for example, the RFCs) also refers to the transport-layer packet for TCP as a segment but often refers to the packet for UDP as a datagram. But it also uses the term *datagram* for the network-layer packet!
+
+The Internet's network-layer protocol has a name--IP, for Internet Protocol. IP provides logical communication between hosts. The IP service model is a **best-offert delivery service**. This means that IP makes its "best effort" to deliver segments between communication hosts, *but it makes no guarantees*. In particular, it does not guarantee segment delivery, it does not guarantee orderly delivery of segments, and it does not guarantee the integrity of the data in the segments. IP is said to be an **unreliable service**. Every host has at least one network-layer address, a so-called IP address.
+
+THe fundamental responsibility of UDP and TCP is to extend IP's delivery service between two end systems to delivery service between two processes running on the end systems. Extending host-to-host delivery to process-to-process delivery is called **transport-layer multiplexing** and **demultiplexing**. UDP and TCP also provide integrity checking by including error-detection fields in their segments' headers. These two minimal transport-layer services--process-to-process data delivery and error checking--are the only two services that UDP provides! UDP is an unreliable service.
+
+TCP offers several additional services to applications. First and foremost, it provides **reliable data transfer**. Using flow control, sequence numbers, acknowledgements, and timers, TCP ensures that data is delivered from sending process to receiving process, correctly and in order. TCP thus convert's IP's unreliable service between end systems into a reliable data transport service between processes. TCP also provides **congestion control**. It is a servivce for the Internet as a whole, a service for the general good. TCP strives to give each connection traversing a congested link an equal share of the link bandwidth. This is done by regulating the rate at the sending side. UDP traffic, is unregulated.
+
+## 3.2 Multiplexing and Demultiplexing
+

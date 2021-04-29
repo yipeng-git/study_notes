@@ -1371,6 +1371,110 @@ It is not possible to partially resynchronize a replica that restarted via the A
 
 # High Availability
 
+## Redis Sentinel
+
+Using Sentinel you can create a Redis deployment that resists withou human intervention certain kinds of failures. Redis Sentinel also provides other collateral tasks such as monitoring, notifications and acts as a configuration provider for clients.
+
+The full list of Sentinel capabilities at a macroscopical level (i.e. the big picture):
+
+-   **Monitoring**. Sentinel constantly checks if your master and replica instances are working as expected.
+-   **Notification**. Sentinel can notify the system administrator, or other computer programs, via an API, tha something is wrong with one of the monitored Redis instances.
+-   **Automatic failover**. If a master is not working as expected, Sentinel can start failover process wherer a replica is promoted to master, the other additional replicas are configured to use the new master, and the applications using the Redis server are informed about the new address to use when connecting.
+-   **Configuration provider**. Sentinel acts as a source of authority for clients service directory: clients connect to Sentinels in order to ask for the address of the current Redis master responsible for a given service . If a failover occurs, Sentinels will report the new address.
+
+### Distributed nature of Sentinel
+
+Redis Sentinel is a distributed system:
+
+Sentinel it self is designed to run in a configuration where there are mutiple Sentinel processes cooperating together. The advantage of having multiple Sentinel processes cooperating are the following:
+
+1.  Failure detection is performed when multiple Sentinels agree about the fact a given master is no longer available. This lowers the probability of false positives.
+2.  Sentinel works even if not all the Sentinel processes are working, making the system robust against failures. There is no fun in having a failover system which is itself a single point of failure, after all.
+
+The sum of Sentinels, Redis instances and clients connecting to Sentinel and Redis, are also a large distributed system with specific properties. 
+
+## Quick Start
+
+### Obtaining Sentinel
+
+The current version is called **Sentinel 2**, released since Redis 2.8. Redis Sentinel version 1, shipped with Redis 2.6, is deprecated and should not be used.
+
+### Running Sentinel
+
+You can start Sentinel it self as a executable or along with the `redis-server`.  Both ways work the same.
+
+However **it is mandatory** to use a configuration file when running Sentinel, as this file will be used by the system in order to save the current state that will be reloaded in case of restarts. Sentinel wil simply refuse to start if no configuration file is given or if the configuration file path is not writable.
+
+Sentinels by default run **listening for connections to TCP port 26379**, so for Sentinels to work, port 26379 of your servers **must be open** to receive connections from the IP addresses of the other Sentinel instances. Otherwise Sentinels can't talk and can't agree about what to do, so failover will never be performed.
+
+### Fundamental things to know about Sentinel before deploying
+
+1.  You need at least three Sentinel instances for a robust deployment.
+2.  The three Senteinel instances should be placed into computers or virtual machines that are believed to fail in an independent way.
+3.  Sentinel + Redis distributed system does not guarantee that acknowledged writes are retained during failures, since Redis uses asynchronous replication. However there are ways to deploy Sentinel that make the window to lose writes limited to certain moments, while there are other less secure ways to deploy it.
+4.  You need Sentinel support in your clients. Popular client libraries have Sentinel support, but not all.
+5.  There is no HA setup which is safe if you don't test from the time to time in development environments, or even b etter if you can, in production environments, if they work. You may have a misconfiguration that will become apparent only when it's too late (at 3am when you master stops working).
+6.  **Sentinel, Docker, or other forms of Network Address Translation or Port Mapping should be mixed with care**: Docker performs port remapping, breaking Sentinel auto discovery of other Sentinel processes and the list of replicas of a master. Checkthe section about Sentinel and Docker later in this doc for more information.
+
+### Configuring Sentinel
+
+The Redis source distribution contains a file called `sentinel.conf` thst is a self-documented example configuration file you can use to configure Sentinel, however a typical minimal configuration file looks like the following:
+
+```
+sentinel monitor mymaster 127.0.0.1 6379 2
+sentinel down-after-milliseconds mymaster 60000
+sentinel failover-timeout mymaster 180000
+sentinel parallel-syncs mymaster 1
+
+sentinel monitor resque 192.168.1.3 6380 4
+sentinel down-after-milliseconds resque 10000
+sentinel failover-timeout resque 180000
+sentinel parallel-syncs resque 5
+```
+
+You only need to specify the masters to monitor, giving each separated master a different name. There is no need to specify replicas, which are auto-discovered. Sentinel will update the configuration automatically with additional information about replicas. The configuration is alaso rewritten every time a replica is promoted to master during a failover and every time a new Sentinel is discovered.
+
+The example above monitors two sets of Redis instances.
+
+Sentinel monitor statement:
+
+```
+sentinel monitor <master-group-name> <ip> <port> <quorum>
+```
+
+About the **quorum** argument:
+
+-   The **quorum** is the number of Sentinels that need to agree about the fact the master is not reachable, in order to really mark the master as failing, and eventually start a failover procedure if possible.
+-   However **the quorum is only used to detect the failure**. In order to actually perform a failover, one of the Sentinels need to be elected leader for the failover and be authorized to proceed. This is only happens with the vote of the **majority of the Sentinel processes**.
+
+In practical terms this means during failures **Sentinel never starts a failover if the majority of Sentinel processes are unable to talk**.
+
+### Other Sentinel options
+
+```
+sentinel <option_name> <master_name> <option_value>
+```
+
+-   `down-after-milliseconds`
+-   `parallel-syncs`
+
+Configuration parameters can be modified at runtime:
+
+-   Master-specific configuration parameters are modified using `SENTINEL SET`.
+-   Global configuration parameters are modified using `SENTINEL CONFIG SET`.
+
+### Example Sentinel deployments
+
+## A quick tutorial
+
+## Sentinel API
+
+## More advanced concepts
+
+## Algorithms and internals
+
+
+
 # Latency Monitoring
 
 # Security
@@ -1379,5 +1483,7 @@ It is not possible to partially resynchronize a replica that restarted via the A
 
 # Memory Optimization
 
-# Mass Inserttion
+# Mass Insertion of data
+
+# Cache Penetration and Cache Avalanche
 
