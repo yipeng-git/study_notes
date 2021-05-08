@@ -253,11 +253,43 @@ Moreover, elements in a sorted sets are *taken in order* (so they are not ordere
 -   If A and B are two elements with a different score, then A > B if A.score is B.score.
 -   If A and B have exactly the same score, then A > B if the A string is lexicographically greater than the B string. A and B strings can't be equal since sorted sets only have unique elements.
 
-### Implementation note: 
+### Implementation note
 
 Sorted sets are implemented via a dual-ported data structure containing both a skip list and a hash table.
 
 Add: O(log(N))
+
+### Sorted List
+
+The average time complexity of search is O(logN), with normalized distributed level.
+
+If use normalized distributed level, rebalance (O(N)) can be a problem after insertion (O(logN)). Thus when inserting a new element, we assign it a random number of level, and we only need to modify the pointers next to the new element.
+
+```
+randomlevel()
+		level = 1;
+		while random() < p and level < maxLevel do
+				level + 1
+    return level
+```
+
+Redis use `p = 1/4` and ''maxLevel = 32` as default.
+
+### Why Redis uses skiplist
+
+@antirez
+
+```
+There are a few reasons:
+
+1) They are not very memory intensive. It’s up to you basically. Changing parameters about the probability of a node to have a given number of levels will make then less memory intensive than btrees.
+
+2) A sorted set is often target of many ZRANGE or ZREVRANGE operations, that is, traversing the skip list as a linked list. With this operation the cache locality of skip lists is at least as good as with other kind of balanced trees.
+
+3) They are simpler to implement, debug, and so forth. For instance thanks to the skip list simplicity I received a patch (already in Redis master) with augmented skip lists implementing ZRANK in O(log(N)). It required little changes to the code.
+```
+
+
 
 ### Sorted Set Related Commands
 

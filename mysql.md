@@ -1,3 +1,87 @@
+# Introduction
+
+## Basic Manipulation Operations
+
+Manipulate database -> manipulate table in database -> manipulate data in table
+
+### Connect to MySQL database
+
+```
+mysql -P <port> -h <address> -u <username> -p<password>
+```
+
+### Databases
+
+#### Create Database
+
+```sql
+CREATE DATABASE [IF NOT EXISTS] mydatabase;
+```
+
+#### Delete Database
+
+```sql
+DROP DATABASE [IF EXISTS] mydatabase;
+```
+
+#### Show All Databases
+
+```sql
+show databases; -- show all databases
+```
+
+#### Use Database
+
+```sql
+use <database> -- switch to databse
+```
+
+### Tables
+
+#### Show Tables
+
+```sql
+show tables; -- show all tables
+```
+
+#### Show Table Information
+
+```sql
+show columns in <table>; -- show all the columns
+describe <table>; -- = show columns
+show create table <table>; -- show the info using to create the table, including the defination of columns
+```
+
+
+
+## Database Languages
+
+### Database Define Language (DDL)
+
+### Database Manipulate Language (DML)
+
+### Database Query Language (DQL)
+
+### Database Control Language (DCL)
+
+## Data Types
+
+### Numeric Data Types
+
+#### Integer Types
+
+For integer data types, ***M*** indicates the maximum display width. The maximum display width is 255. 
+
+For floating-point and fixed-point data types, ***M*** is the total number of digits that can be stored.
+
+If you specify `ZEROFILL` for a numeric column, MySQL automatically adds the `UNSIGNED` attribute to the column.
+
+Numeric data types are signed by default.
+
+-   BIT
+
+
+
 # InnoDB
 
 ## ACID Model
