@@ -1037,3 +1037,146 @@ TCP offers several additional services to applications. First and foremost, it p
 
 ## 3.2 Multiplexing and Demultiplexing
 
+The transport layer has the responsibility of delivering the data in segments to the appropriate application process running in the host. A process can have one or more **sockets**, which is an interface allows data passes from the process to the network. Thus, the transport layer in the receiving host does not actually deliver data directly to a process, but instead to an intermediary socket. Each socket has a unique identifier. The format of the identifier depends on whether the socket is a UDP or a TCP socket.
+
+Each transport-layer segment has a set of fields in the segment to direct an incoming transport-layer segment to the appropriate socket. At receiving end, the transport layer examines these fields to identify the socket. This job of delivering the data in a transport-layer segment to the correct socket is called **demultiplexing**. The job of gathering data chunks at the source host from different sockets, encapsulating each data chunk with header information (that will later be using in demultiplexing) to create segments, and passing the segments to the network layer is called **multiplexing**.
+
+Transport-layer multiplexing requires (1) that sockets have unique identifiers, and (2) that each segment have special fields that indicate the socket to which the segment is to being delivered. These special fields are the **source port number field** and the **destination port number field**. Each port number is a 16-bit number, ranging from 0 to 65535. The port numbers ranging from 0 to 1023 are called **well-known port numbers** and are restricted, which means that they are reserved for use by well-known application protocols such as HTTP (port 80) and FTP (port 21).
+
+### Connectionless Multiplexing and Demultiplexing
+
+Typically, the client side of the application lets the transport layer automatically (and transparently) assign the port number, whereas the server side of the application assigns a specific port number.
+
+If two UDP segments have different source IP address and/or source port numbers, but have the same *destination* IP address and *destination* port number, then the two segments will be directed to the same destination process via the same distination socket.
+
+### Connection-Oriented Multiplexing and Demultiplexing
+
+TCP socket is identified by a four-tuple: (source IP address, source port number, destination IP address, destination port number).
+
+In particular, and in contrast with UDP, two arriving TCP segments with different source IP addresses or source port numbers will be directed to two different sockets.
+
+The server host may support many simultaneous TCP connection sockets, with each socket attached to a process, and with each socket identified by its own four-tuple.
+
+### Web Servers and TCP
+
+Today's high-performing Web servers often use only one process, and create a new. thread with a new connection socket for each new client connection.
+
+## 3.3 Connectionless Transport: UDP
+
+UDP does just about as little as a transport protocol can do. Aside from the multiplexing/demultiplexing function and some light error checking, It adds nothing to IP. With UDP there is no handshaking between sending and receiving transport-layer entities before sending a segment. For this reason, UDP is said to be *connectionless*.
+
+DNS is a great example of application-layer protocol that typically uses UDP.
+
+Some application prefer UDP for the following reasons:
+
+-   *Finer application-level control over what data is sent, and when*. Under UDP, there is no congestion control that throttles the sender. TCP will also continue to resend a segment until the receipt of the segment has been acknowledged by the destination, regardless of how long reliable delivery takes. Real-time applications often require a minimum sending rate and do not want to overly delay segment transmission, and can tolerate some data loss.
+-   *No connection establishment*. UDP does not introduce any delay to establish a connection.
+-   *No connection state*. TCP maintains connection state in the end system. This connection state includes receive and sned buffers, congestion-control parameters, and sequence and acknowledgement number parameters. UDP, on the other hand, does not maintain connection state and does not track any of these parameters. For this reason, a server devoted to a particular applciation can typically support many more active clients when the application runs over UDP rather than TCP.
+-   *Small packet header overhead*. The TCP segment has 20 bytes of header overhead in every segment, whereas UDP has only 8 bytes of overhead.
+
+Multimedia application sometimes can tolerate a small amount of packet loss. Furthermore, real-time application, like Internet phone and video conferencing, react very poorly to TCP's congestion control. When packet loss rates are low, and with some organization blocking UDP traffic for security reason, TCP becomes a increasingly attractive protocol for streaming media support.
+
+UDP has no congestion control, there would be som much packet overflow at routers that very few UDP packets would successfully traverse the source-to-destination path. The high loss rates induced by the uncontrolled UDP senders would cause the TCP senders to dramatically devrease their rates. Thus, the pack of congestion control in UDP can result in high loss rates between a UDP sender and receiver, and the crowding out of TCP sessions.
+
+It *is* possible for an apllication to have reliable data transfer when using UDP. This can be done if reliability is built into the application itself.
+
+### 3.3.1 UDP Segment Structure
+
+The application data occupies the data field of the UDP segment. The UDP header has only four fields, each consisting of two bytes. The port numbers allow the destination host to pass the application data to the correct process running on the destination end system. The length field specifies the number of bytes in the UDP segment (header plus datai). An explicit length value is neede since the size of the data field may differ from one UDP segment to the next. The checksum is used by the receiving host to check whether errors have been introduced into the segment.
+
+![UDP segment structure](https://raw.githubusercontent.com/yipeng-git/study_notes/main/markdown_images/udp_structure.jpeg)
+
+### 3.3.2 UDP Checksum
+
+## 3.4 Principles of Reliable Data Transfer
+
+The figure below illustrate the framework for our study of reliable data transfer. With a reliable channel, no transferred data bits are corrupted or lost, and all are delivered in the order in which they were sent. This is precisely the service model offered by TCP to the Internet application that invoke it.
+
+It is the responsibility of a **reliable data transfer protocol** to implement this service abstraction. This task is made difficult by the fact that the layer *below* the reliable data transfer protocol may be unreliable.
+
+One assumption we'll adopt throughout our discussion here is that packets will be delivered in the order in which they were sent, with some packets possibly being lost; thst is the underlying channel will not reorder packets. 
+
+![Reliable data transfer: Service model and service implementation](https://raw.githubusercontent.com/yipeng-git/study_notes/main/markdown_images/reliable_data_transfer.jpeg)
+
+Here `rdt` stands for *realiable data transfer* protocol and `udt` stands for *unreliable data transfer* protocol.
+
+In the following we use the terminology "packet" rather than transport-layer "segment". Because the theory developed in this section applies to computer networks in general and not just to the Internet transport layer, the generic term "packet" is perhaps more appropriate here.
+
+In this section we consider only the case of **unidirectional data transfer**, that is, data transfer from the sending to the receiving side. The case of reliable **bidirectional** (that is, full-duplex) **data transfer** is conceptually no more difficult but considerably more tedious to explain.
+
+### 3.4.1 Building a Reliable Data Transfer Protocol
+
+#### Reliable Data Transfer over a Perfectly Reliable Channel: `rdt1.0`
+
+Simplest case, in which the underlying channerl is completely reliable. The **finite-state machine (FSM)** definition for the `rdt 1.0` sender and receiver are shown in the figure below. It is important to note that there are separate **FSMs** for the sender and for the receiver.
+
+![rdt1.0 - A protocol for a complete reliable channel](https://raw.githubusercontent.com/yipeng-git/study_notes/main/markdown_images/rdt1.0.jpeg)
+
+In this simple protocol, there is no difference between a unit of data and a packet. Also, all packet flow is from the sender to receiver; with a perfectly reliable channel there is no need for the receiver side to provide any feedback to the sender since nothing can go wrong! Note that we have also assumed that the receiver is able to receive data as fast as the sender happens to send data. Thus, there is no need for the receiver to ask the sender to slow down!
+
+#### Reliable Data Transfer over a Channel with Bit Errors: `rdt2.0`
+
+A more realistic model of the underlying channel is one in which bits in a packet may be corrupted. Such bit errors typically occur in the physical components of a network as a packet is transmitted, propagates, or is buffered. We'll continue to assume for the moment that all transmitted packets are received in the order in which they were sent.
+
+A message-dictation protocol uses both **positive acknowledgements** ("OK") and **negative acknowledgements** ("Please repeat that."). These control messages allow the receiver to let the sender know what has been received correctly, and what has been received in error and thus requires repeating. In a computer network setting, reliable data transfer protocols based on such retransmission are known as **ARQ (Automatic Repeat reQuest) protocols**.
+
+Fundamentally, three additional protocol capabilities are required in ARQ protocols to handle the presence of bit errors:
+
+-   *Error detection.* First, a mechanism is needed to allow the receiver to detect when bit errors have occurred. These techniques require that extra bits be sent from the sender to the receiver; these bits will be gathered into the packet checksum field of the `rdt2.0` data packet.
+-   *Receiver feedback*. The positive (ACK) and negative (NAK) acknowledgement replies in the message-dictation scenario are examples of such feedback. Our `rdt2.0` protocol will similary send ACK and NAK packets back from the receiver to the sender. In pricinple, these packets need only be one bit long; for example, a 0 value could indicate a NAK and a value of 1 could indicate an ACK.
+-   *Retransmission*. A packet that is received in error at the receiver will be retransmitted by the sender.
+
+The figure below shows the FSM representation of `rdt2.0`, a data transfer protocol employing error detection, positive acknowledgements, and negative acknowledgements.
+
+![rdt2.0 - A protocol for a channel with bit errors](https://raw.githubusercontent.com/yipeng-git/study_notes/main/markdown_images/rdt2.0.jpeg)
+
+It is important to note that when the sneder is in the wait-for-ACK-or-NAK state, it *cannot* get more data from the upper layer. Thus, the sender will not send a new piece of data untio it is sure that the receiver has correctly received the current packet. Because of this behavior, protocols such as `rdt2.0` are known as **stop-and-wait** protocols.
+
+Protocol `rdt2.0` may look as if it works but, unfortunately, it has a fatal flaw. In particular, we haven't accounted for the possibility that the ACK or NAK packet could be corrupted! Minimally, we will need to add checksum bits to ACK/NAK packets in order to detect such errors. The more difficult question is how the protocol should recover from errors in ACK or NAK packets. The difficulty here is that if an ACK or NAK is corrupted, the sender has no way of knowing wether or not the receiver has correctly received the last piece of transmitted data.
+
+Consider three possiblilities for handling corrupted ACKs or NAKs:
+
+-   For the first possibility, the speaker would probably ask, "What did you say?"
+-   A second alternative is to add enough checksum bits to allow the sender not only to detect, but also to recover from, bit errors. This solves the immediate problem for a channel that can corrupt packets but not lose them.
+-   A third approach is for the sender simply to resend the current data packet when it receives a garbled ACK or NAK packet. This approach, however, introduces **duplicate packets** into the sender-to-receiver channel. The fundamental difficulty with duplicate packets is that the receiver doesn't know whether the ACK or NAK *it* last sent was received correctly at the sender. Thus, it cannot know *a priori* whether an arriving packet contains new data or is a retransmission!
+
+A simple solution to this new problem (and one adopted in almost all existing data transfer protocols, including TCP) is to add a new field to the data packet and have the sender number its data packets by putting a **sequence number** into this field. The receiver then need only check this sequence number to determine whether or not the received packet is a retransmission. For this simple case of a stop-and-wait prpotocol, a 1-bit sequence number will suffice, since it will allow the receiver to know wether the sender is resending the previously transmitted packet or a new packet. Since we are currently assuming a channel that does not lose packets, ACK and NAK packets do not themselves need to indicate the swquence number of the packet they are acknowledging. The sender knowns that a received ACK or NAK packet (whether garbled or not) was generated in response to its most recently transmitted data packet.
+
+The figure below show the FSM description for `rdt2.1`.
+
+![rdt2.1 sender](https://raw.githubusercontent.com/yipeng-git/study_notes/main/markdown_images/rdt2.1_sender.jpeg)
+
+![rdt2.1 receiver](https://raw.githubusercontent.com/yipeng-git/study_notes/main/markdown_images/rdt2.1_receiver.jpeg)
+
+We can accomplish the same effect as a NAK if, instead of sending a NAK, we send an ACK for the last correctly received packet. A sender that receives two ACKs for the same packet (that is, receives **duplicate ACKs**) knowns that the receiver did not correctly receive the packet following the packet that is being ACKed twice. Our NAK-free reliable data transfer protocol for a channel with bit errors is `rdt2.2`, shown in the figures below.
+
+![rdt2.2 sender](https://raw.githubusercontent.com/yipeng-git/study_notes/main/markdown_images/rdt2.2_sender.jpeg)
+
+![rdt2.2 receiver](https://raw.githubusercontent.com/yipeng-git/study_notes/main/markdown_images/rdt2.2_receiver.jpeg)
+
+One subtle change between `rdt2.1` and `rdt2.2` is that the receiver must now include the sequence number of the packet being acknowledged by an ACK message (this is done by including the `ACK,0` or `ACK,1` argument in `make_pkt()` in the receiver FSM), and the sender must now check the sequence number of the packet being acknowledged by a received ACK message (this is done by including the `0` or `1` argument in `isACK()` in the sender FSM).
+
+#### Reliable Data Transfer over a Lossy Channel with Bit Errors: `rdt3.0`
+
+Suppose now that in addition to corrupting bits, the underlying channel can *lose* packets as well. Two additional concerns must now be addressed by the protocol: how to detect packet loss and what to do when packet loss occurs. The use of checksumming, sequence numbers, ACK packets, and retransmission--the techniques already developed in `rdt2.2`--will allow us to anser the latter concern. Handling the first concern will require adding a new protoocl mechanism.
+
+There are many possible approaches. Here we'll put the burden of detecting and recovering from lost packets on the sender. Suppose that the sender transmits a data packet and either that packet, or the receiver's ACK of that packet, get lost.If the sender is willing to wait long enough so that it is *certain* that a packet has been lost, it can simply retransmit the data packet.
+
+But how long ust the sender wait? The sender must clearly wait at least as long as a round-trip delay between the sender and receiver plus whatever amount of time is needed to process a packet at the receiver. In many networks, this worst-case maximum delay is very difficult even to estimate. Moreover, the protocol should ideally recover from packet loss as soon as possible. The approach thus adopted in practice is for the sender to judiciously choose a time value such that packet loss is likely, although not guaranteed. If an ACK is not received within this time, the packet is retransmitted. This introduces the possibility of **duplicate data packet** in the sender-to-receiver channel. Happily, protocol `rdt2.2` already has enough functionality to handle the case of duplicate packets.
+
+In all cases, the action for the sender is the same: retransmit. Implementing a time-based retransmission mechanism requires a **countdown timer** that can interrupt the sender after a given amount of time has expired. The sender will thus need to be able to (1) start the timer each time a packet is sent, (2) respond to a timer interrupt, and (3) stop the timer.
+
+The figure below shows the sender FSM for `rdt3.0`, a protocol that reliably transfer data over a channel that can corrupt or lose packets. Because packet sequence number alternate between 0 and 1, protocol `rdt3.0` is sometimes known as the **alternating-bit protocol**.
+
+![rdt3.0 sender](https://raw.githubusercontent.com/yipeng-git/study_notes/main/markdown_images/rdt3.0_sender.jpeg)
+
+### 3.4.2 Pipelined Reliable Data Transfer Protocols
+
+Rather than operate in a stop-and-wait manner, the sender is allowed to send multiple packets without waiting for acknowledgements. This technique is known as **pipelining**. Pipelining has the following consequences for reliable data transfer protocols:
+
+-   The range of sequence numbers must be increased, since each in-transit packet (not counting retransmissions) must have a unique sequence number and there may be multiple, in-transit, unacknowledged packets.
+-   The sender and receiver sides of the protocols may have to buffer more than one packet. Minimally, the sender will have to buffer packets that have been transmitted but not yet acknowledged. Buffering of correctly received packets may also be needed at the receiver, as discussed below.
+-   The range of sequence numbers needed and the buffering reequirements will depend on the manner in which a data transfer protocol responds to lost, corrupted, and overly delayed packets. Two basic approaches toward pipelined error recovery can be identified: **Go-Back-N** and **selective repeat**.
+
+### 3.4.3 Go-Back-N (GBN)
+
