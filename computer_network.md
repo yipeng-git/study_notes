@@ -1,4 +1,5 @@
 # 1. Computer Networks and the Internet
+
 ## 1.1 What is the Internet?
 
 -   Nuts-and-Bolts: The basic hardware and software components make up the internet.
@@ -1180,3 +1181,24 @@ Rather than operate in a stop-and-wait manner, the sender is allowed to send mul
 
 ### 3.4.3 Go-Back-N (GBN)
 
+In a **Go-Back-N (GBN) protocol**, the sender is allowed to transmit multiple packets without waiting for an acknowledgement, but is constrained to have no more than some maximum allowable number, N, of unacknowledged packets in the pipeline.
+
+The figure below shows the sender's view of the range of sequence numbers in a GBN protocol. 
+
+![Sender's view of sequence numbers in Go-Back-N](https://raw.githubusercontent.com/yipeng-git/study_notes/main/markdown_images/gbn_sequence.jpeg)
+
+If we define `base` to the sequence number of the oldest unacknowledged packet and `nextsequm` to be the smallest unused sequence number (that is, the sequence number of the next packet to be sent), then four intervals in the range of sequence numbers can be identified. Sequence numbers in the interval `[0,base-1]` correspond to packets that have already been transmitted and acknowledged. The interval `[base,nextseqnum-1]` corresponds to packets that have been sent but not yet acknowledged. Sequence number in the interval `[nextseqnum,base+N-1]` can be used for packets that can be sent immediately, should data arrive from the upper layer. Finally, sequence number greater than or eequal to `base+N` cannot be used until an unacknowledged packet currently in the pipeline (the packet with sequence number `base`) has been acknowledged.
+
+As the protocol operates, this window slides forward over the sequence number space. For this reason, *N* is often referred to as the **window size** and GBN protocol itself as a **sliding-window protocol**. 
+
+In practice, a packet's sequence number is carried in a fixed-length field in the packet header. If *k* is the number of bits in the packet sequence number field, the range of sequence number is thus `[0,2^k-1]`. Recall that `rdt3.0` had a 1-bit sequence number and a range of sequence numbers of `[0,1]`. We will see that TCP has a 32-bit sequence number field, where TCP sequence numbers counts bytes in the byte stream rather than packets.
+
+The figures below shows the the extended FSM description of the sender and receiver sides of an ACK-based, NAK-free, GBN protocol.
+
+![Extended FSM description of the GBN sender](https://raw.githubusercontent.com/yipeng-git/study_notes/main/markdown_images/gbn_sender.jpeg)
+
+![Extended FSM description of the GBN receiver](https://raw.githubusercontent.com/yipeng-git/study_notes/main/markdown_images/gbn_receiver.jpeg)
+
+We refer to this FSM as *extended FSM* because we have added variables for `base` and `nextseqnum`, and added operations on these variables and conditional actions involving these variables.
+
+The GBN sender must response to three types of events:
