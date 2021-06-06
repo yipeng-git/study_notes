@@ -1202,3 +1202,33 @@ The figures below shows the the extended FSM description of the sender and recei
 We refer to this FSM as *extended FSM* because we have added variables for `base` and `nextseqnum`, and added operations on these variables and conditional actions involving these variables.
 
 The GBN sender must response to three types of events:
+
+-   *Invocation from above*. When `rdt_send()` is called from above, the sender first checks to see if the window is full. If the window is full, the sender simply returns the data back to the upper layer, an implicit indication that the window is full. The upper layer would presumably then have to trey again later. In real implementation, the sender would more likely have either buffered (but not immediately send) this data, or would have a synchronization mechanism that would allow the upper layer to call `rdt_send()` only when the window is not full.
+-   *Receipt of an ACK*. In our GBN protocol, an acknowledgment for a packet with sequence number *n* will be taken to be a *cumulative acknowledgment*, indicating that all packets with a sequence number up to and including *n* have been correctly received at the receiver.
+-   *A timeout event*. The protocol's name, "Go-Back-N", is derived from the sender's behavior in the presence of lost or overly delayed packets. As in the stop-and-wait protocol, a timer will again be used to recover from lost data or acknowledgment packet. If a timeout occurs, the sender resends all packets that have been previously sent but that have not yet been acknowledged.
+
+The. r eceiver's actions in GBN are also simple. If a packet with sequence number *n* is received correctly and is in order, the receiver sends an ACK for packet *n* and elivers the data portion of the packet to the upper layer. In all other cases, the receiver discards the packet and resends an ACK for the most recently received in-order packet.
+
+In our GBN protocol, the receiver discards out-of-order packets. Although it may seem silly and wasteful to discard a correctly received packet, there is some justification for doing so. While the sender must maintain the upper and lower bounds of its window and position of `nextseqnum` within this window, the only piece of information the receiver need maintain is the sequence number of the next in-order packet.
+
+It is worth noting that an implementation of this protocol in a protocol stack would likely have a structure similar to that of the extended FSM. The implementation would also likely be in the form of various procedures that implement the actions to be taken in response to the various events that can occur. In such **event-based programming**, the various procedures are called (invoked) either by other procedures in the protocol stack, or as the result of an interrupt. In the sender, these events would be (1) a call from the upper-layer entity to invoke `rdt_sent()`, (2) a timer interrupt, and (3) a call from the lower lalyer to invoke `rdt_rcv()` when a packet arrives.
+
+### 3.4.4 Selective Repeat (SR)
+
+There are, however scenarios in which GBN itself suffers from performance problems. In particular, when the window size and bandwidth-delay product are both large, many packetts can be in the pipeline. A single packet error can thus cause GBN to retransmit a large number of packets, many unnecessarily. As the probability of channel errors increases, the pipeline can become filled with these unnecessary retransmissions.
+
+As the name suggests, selective-repeat protocols avoid unnecessary retransmissions by having the sender retransmit only those packets that it suspects were received in error at the receiver. This individual retransmisison will require that the receiver *individually* acknowledge correctly received packets. A window size of *N* will again be used to limit the number of outstanding, unacknowledged packets in the pipeline. However, unlike GBN, the sender will have already received ACKs for some of the packets in the window.
+
+![Selective-repeat (SR) sender and receiver views of sequence-number space](https://raw.githubusercontent.com/yipeng-git/study_notes/main/markdown_images/selective_repeat.jpeg)
+
+SR sender events and actions:
+
+-   *Data received from above*. When data is received from above, the SR sender checks the next available sequence number for the packet and decides to accept or reject the data.
+-   *Timeout*. Timer are again used to protect against lost packets. However, each packet must have its own logical timer.
+-   *ACK received*. If an ACK is received, the SR sender marks that packet as having been received, provided it is in the window. If the packet's sequence number is equal to `send_base`, the window b ase is moved forward to the unacknowledged packet with the smallest sequence number.
+
+SR receiver events and actions:
+
+-   *Packet with sequence number in* `[rcv_base, rcv_base+N-1]` *is correctly received*. Send selective ACK to the sender. If `seqnum` equals to `rcv_base`, deliver the packet to the upper layer and move the window. 
+-   *Packet with sequence number in* `[rcv_base-N, rcv_base-1]` is correctly received. In this case, an ACK must be generated, even though this is a packet that the receiver has previously acknowledged.
+-   *Otherwise*. Ignore the packet.

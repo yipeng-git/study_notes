@@ -250,7 +250,7 @@ However while elements inside sets are not ordered, every element in a sorted is
 
 Moreover, elements in a sorted sets are *taken in order* (so they are not ordered on request, order is a peculiarity of the data structure used to represent sorted sets). They are ordered according to the following rule:
 
--   If A and B are two elements with a different score, then A > B if A.score is B.score.
+-   If A and B are two elements with a different score, then A > B if A.score is > B.score.
 -   If A and B have exactly the same score, then A > B if the A string is lexicographically greater than the B string. A and B strings can't be equal since sorted sets only have unique elements.
 
 ### Implementation note
