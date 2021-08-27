@@ -223,4 +223,3 @@ kubectl rollout undo deployments/kubernetes-bootcamp
 
 # Stateless Applications
 
-1
